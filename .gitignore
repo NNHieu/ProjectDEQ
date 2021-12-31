@@ -1,0 +1,44 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+.DS_Store/
+__pycache__/
+
+# C extensions
+*.so
+
+### VisualStudioCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+**/.vscode
+
+# JetBrains
+.idea/
+
+.ipynb_checkpoint/
+.ipynb_checkpoints/
+*.ipynb
+
+*.pt
+*.pth
+*.pkl
+
+*.data
+data/
+/datasets/*
+
+*.log
+log/
+logs/
+runs/
+*_old/
+private_*
+results/
+
+.env

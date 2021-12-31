@@ -1,0 +1,8 @@
+# activate hydra tab completion for bash
+eval "$(python run.py -sc install=bash)"
+
+# enable aliases for debugging
+alias debug='python run.py mode=debug'
+alias debug2='python run.py mode=debug trainer.fast_dev_run=false trainer.max_epochs=1 trainer.gpus=0'
+alias debug3='python run.py mode=debug trainer.fast_dev_run=false trainer.max_epochs=1 trainer.gpus=1'
+alias debug_wandb='python run.py mode=debug trainer.fast_dev_run=false trainer.max_epochs=1 trainer.gpus=1 logger=wandb logger.wandb.project=tests'

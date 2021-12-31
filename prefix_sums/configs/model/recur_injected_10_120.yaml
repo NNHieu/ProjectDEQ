@@ -1,0 +1,19 @@
+# name: RecurNet
+_target_: src.models.prefixsum_model.PrefixSumLitModel
+
+# name: FixedPointNet
+model: recur_injected_net
+arch:
+  depth: 44
+  width: 120
+# Optim
+lr: 0.001
+lr_schedule:
+  - 100
+  - 200
+  - 300
+lr_decay: step
+lr_factor: 0.5
+optimizer_name: adam
+warmup_period: 0
+pretrain_steps: 10

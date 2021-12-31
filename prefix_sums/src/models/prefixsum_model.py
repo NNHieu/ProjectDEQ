@@ -1,0 +1,227 @@
+import sys
+from ctypes import ArgumentError
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import torch
+from icecream import ic
+from pytorch_lightning import LightningModule
+from pytorch_lightning.utilities.types import (
+    EVAL_DATALOADERS,
+    STEP_OUTPUT,
+    TRAIN_DATALOADERS,
+)
+from src.models.modules import get_model
+from torchmetrics import MaxMetric
+from torchmetrics.classification.accuracy import Accuracy
+
+
+class PrefixSumLitModel(LightningModule):
+    """
+    Example of LightningModule for MNIST classification.
+
+    A LightningModule organizes your PyTorch code into 5 sections:
+        - Computations (init).
+        - Train loop (training_step)
+        - Validation loop (validation_step)
+        - Test loop (test_step)
+        - Optimizers (configure_optimizers)
+
+    Read the docs:
+        https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html
+    """
+
+    def __init__(
+        self,
+        model: str,
+        arch: Dict,
+        # output_size: int = 10,
+        test_mode: str = "default",
+        optimizer_name: str = "adam",
+        lr: float = 0.001,
+        lr_decay: str = "step",
+        lr_schedule: Tuple[int] = [100, 200, 300],
+        lr_factor: float = 0.5,
+        weight_decay: float = 0.0005,
+        pretrain_steps: int = 100,
+        warmup_period: int = 10,
+    ):
+        super().__init__()
+
+        # this line allows to access init params with 'self.hparams' attribute
+        # it also ensures init params will be stored in ckpt
+        self.save_hyperparameters(logger=False)
+        self.hparams.lr_decay = self.hparams.lr_decay.lower()
+        if self.hparams.test_mode != "default":
+            raise ArgumentError(
+                f"{ic.format()}: Test mode choise of {self.hparams.test_mode} not yet implmented."
+            )
+
+        self.model = get_model(self.hparams.model, self.hparams.arch)
+
+        # loss function
+        self.criterion = torch.nn.CrossEntropyLoss()
+
+        # use separate metric instance for train, val and test step
+        # to ensure a proper reduction over the epoch
+        self.train_acc = Accuracy()
+        self.val_acc = Accuracy()
+        self.test_acc = Accuracy()
+
+        # for logging best so far validation accuracy
+        self.val_acc_best = MaxMetric()
+
+    def forward(self, x: torch.Tensor, deq_mode: bool = True):
+        return self.model(x)
+
+    def step(self, batch: Any, deq_mode: bool = True):
+        x, y = batch
+        logits = self.forward(x, deq_mode=deq_mode).squeeze()
+        loss = self.criterion(logits, y)
+        preds = torch.argmax(logits, dim=1)
+        return loss, preds, y
+
+    def training_step(self, batch: Any, batch_idx: int):
+        deq_mode = (
+            self.hparams.model == "fp_net" and self.current_epoch >= self.hparams.pretrain_steps
+        )
+        loss, preds, targets = self.step(batch, deq_mode=deq_mode)
+
+        # log train metrics
+        acc = self.train_acc(preds, targets)
+        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
+
+        # we can return here dict with any tensors
+        # and then read it in some callback or in `training_epoch_end()`` below
+        # remember to always return loss from `training_step()` or else backpropagation will fail!
+        return {"loss": loss, "preds": preds, "targets": targets}
+
+    def on_train_batch_end(
+        self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, unused: Optional[int] = 0
+    ) -> None:
+        if self.hparams.model == "fp_net" and self.current_epoch >= self.hparams.pretrain_steps:
+            fp_layer = self.model.fixedpoint_layer
+            self.log(
+                "train/f_nstep", fp_layer.f_nstep, on_step=False, on_epoch=True, prog_bar=True
+            )
+            self.log(
+                "train/f_lowest", fp_layer.f_lowest, on_step=False, on_epoch=True, prog_bar=False
+            )
+            self.log(
+                "train/b_nstep", fp_layer.b_nstep, on_step=False, on_epoch=True, prog_bar=False
+            )
+            self.log(
+                "train/b_lowest", fp_layer.b_lowest, on_step=False, on_epoch=True, prog_bar=False
+            )
+        return super().on_train_batch_end(outputs, batch, batch_idx, unused=unused)
+
+    def validation_step(self, batch: Any, batch_idx: int):
+        loss, preds, targets = self.step(batch)
+
+        if self.hparams.model == "fp_net":
+            self.log(
+                "val/f_nstep",
+                self.model.fixedpoint_layer.f_nstep,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+            )
+            self.log(
+                "val/f_lowest",
+                self.model.fixedpoint_layer.f_lowest,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=False,
+            )
+        # log val metrics
+        acc = self.val_acc(preds, targets)
+        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
+
+        return {"loss": loss, "preds": preds, "targets": targets}
+
+    def validation_epoch_end(self, outputs: List[Any]):
+        acc = self.val_acc.compute()  # get val accuracy from current epoch
+        self.val_acc_best.update(acc)
+        self.log("val/acc_best", self.val_acc_best.compute(), on_epoch=True, prog_bar=True)
+
+    def test_step(self, batch: Any, batch_idx: int):
+        loss, preds, targets = self.step(batch)
+
+        # log test metrics
+        acc = self.test_acc(preds, targets)
+        self.log("test/loss", loss, on_step=False, on_epoch=True)
+        self.log("test/acc", acc, on_step=False, on_epoch=True)
+
+        return {"loss": loss, "preds": preds, "targets": targets}
+
+    def test_epoch_end(self, outputs: List[Any]):
+        pass
+
+    def on_epoch_end(self):
+        # reset metrics at the end of every epoch!
+        self.train_acc.reset()
+        self.test_acc.reset()
+        self.val_acc.reset()
+
+    def configure_optimizers(self):
+        """Choose what optimizers and learning-rate schedulers to use in your optimization.
+        Normally you'd need one. But in the case of GANs or similar you might have multiple.
+
+        See examples here:
+            https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
+        """
+        optimizer_name = self.hparams.optimizer_name.lower()
+        model = self.hparams.model.lower()
+        lr = self.hparams.lr
+        base_params = [p for n, p in self.named_parameters()]
+        recur_params = []
+        iters = 1
+
+        # if "recur" in model:
+        #     base_params = [p for n, p in net.named_parameters() if "recur" not in n]
+        #     recur_params = [p for n, p in net.named_parameters() if "recur" in n]
+        #     iters = net.iters
+        # else:
+        #     base_params = [p for n, p in net.named_parameters()]
+        #     recur_params = []
+        #     iters = 1
+
+        all_params = [{"params": base_params}, {"params": recur_params, "lr": lr / iters}]
+
+        if optimizer_name == "sgd":
+            optimizer = torch.optim.SGD(all_params, lr=lr, weight_decay=2e-4, momentum=0.9)
+        elif optimizer_name == "adam":
+            optimizer = torch.optim.Adam(all_params, lr=lr, weight_decay=2e-4)
+        elif optimizer_name == "adamw":
+            optimizer = torch.optim.AdamW(
+                all_params, lr=lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0.01, amsgrad=False
+            )
+        elif optimizer_name == "adadelta":
+            optimizer = torch.optim.Adadelta(all_params, lr=lr, rho=0.9, eps=1e-06, weight_decay=0)
+        else:
+            print(
+                f"{ic.format()}: Optimizer choise of {optimizer_name} not yet implmented. Exiting."
+            )
+            sys.exit()
+
+        # warmup_scheduler = ExponentialWarmup(optimizer, warmup_period=self.hparams.warmup_period)
+
+        if self.hparams.lr_decay.lower() == "step":
+            lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                optimizer,
+                milestones=self.hparams.lr_schedule,
+                gamma=self.hparams.lr_factor,
+                last_epoch=-1,
+            )
+        elif self.hparams.lr_decay.lower() == "cosine":
+            lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, self.hparams.epochs, eta_min=0, last_epoch=-1, verbose=False
+            )
+        else:
+            print(
+                f"{ic.format()}: Learning rate decay style {self.hparams.lr_decay} not yet implemented."
+                f"Exiting."
+            )
+            sys.exit()
+        return ([optimizer], [lr_scheduler])

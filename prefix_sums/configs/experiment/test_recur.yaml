@@ -1,0 +1,57 @@
+# @package _global_
+defaults:
+  - override /mode: exp.yaml
+  - override /trainer: default.yaml
+  - override /model: ???
+  - override /datamodule: null
+  - override /callbacks: null
+  - override /logger: null
+
+metrics:
+  - test/acc
+  - test/loss
+
+only_test: True
+name: "eval_recur"
+checkpoint: ???
+data:
+  root: ${data_dir} # data_dir is specified in config.yaml
+  batch_size: 300
+  type:
+    32bit:
+      nbit: 32
+      iters:
+        - 5
+        - 8
+        - 10
+        - 12
+        - 14
+        - 16
+        - 18
+        - 20
+    44bit:
+      nbit: 44
+      iters:
+        - 5
+        - 8
+        - 10
+        - 12
+        - 14
+        - 16
+        - 18
+        - 20
+    64bit:
+      nbit: 64
+      iters:
+        - 5
+        - 8
+        - 10
+        - 12
+        - 14
+        - 16
+        - 18
+        - 20
+
+callbacks:
+  rich_progress_bar:
+    _target_: pytorch_lightning.callbacks.RichProgressBar

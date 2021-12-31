@@ -1,0 +1,25 @@
+_target_: src.models.prefixsum_model.PrefixSumLitModel
+
+# name: FixedPointNet
+model: fp_net
+arch:
+  f_solver: anderson
+  f_thres: 30
+  b_solver: broyden
+  b_thres: 30
+  stop_mode: rel
+  num_layers: 5
+  depth: 0
+  width: 120
+  small_init: False
+# Optim
+lr: 0.001
+lr_schedule:
+  - 100
+  - 200
+  - 300
+lr_decay: step
+lr_factor: 0.5
+optimizer_name: adam
+warmup_period: 10
+pretrain_steps: 3
