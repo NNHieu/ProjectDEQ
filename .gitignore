@@ -28,6 +28,7 @@ __pycache__/
 *.pt
 *.pth
 *.pkl
+checkpoints/*
 
 *.data
 data/
@@ -35,7 +36,6 @@ data/
 
 *.log
 log/
-logs/
 runs/
 *_old/
 private_*

@@ -16,7 +16,7 @@ defaults:
 
 # name of the run determines folder name in logs
 # it's also accessed by loggers
-name: "recur_injected_10_32bit"
+name: "recur_injected_32bit"
 
 seed: 12345
 
