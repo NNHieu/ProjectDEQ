@@ -31,7 +31,7 @@ def small_init_weights(m):
 class FixedPointNet(nn.Module):
     """Modified ResidualNetworkSegment model class"""
 
-    def __init__(self, block, num_blocks, width, conf):
+    def __init__(self, block, num_blocks, width, block_args, conf):
         super(FixedPointNet, self).__init__()
         self.in_planes = int(width)
         # In
@@ -40,7 +40,9 @@ class FixedPointNet(nn.Module):
         # for i in range(len(num_blocks)):
         #     layers.append()
         # Core
-        self.recur_block = InjectedBlock(block, self.in_planes, width, num_blocks[0], stride=1)
+        self.recur_block = InjectedBlock(
+            block, self.in_planes, width, num_blocks[0], stride=1, **block_args
+        )
         self.fixedpoint_layer = deq.core.DEQLayer(self.recur_block, conf)
         # Out
         self.conv2 = nn.Conv1d(width, width, kernel_size=3, stride=1, padding=1, bias=False)
@@ -51,21 +53,23 @@ class FixedPointNet(nn.Module):
         if conf.get("small_init"):
             self.recur_block.apply(small_init_weights)
 
-    def forward(self, x, deq_mode=True):
+    def forward(self, x, deq_mode=True, **kwargs):
         if self.training:
             self.thoughts = None
 
             out = F.relu(self.conv1(x))
-            out = self.fixedpoint_layer(out, deq_mode=deq_mode)
+            out, jac_loss, sradius = self.fixedpoint_layer(out, deq_mode=deq_mode, **kwargs)
             thought = self._project_thought(out)
         else:
             self.thoughts = None
 
             out = F.relu(self.conv1(x))
-            out = self.fixedpoint_layer(out, deq_mode=deq_mode)
+            out, jac_loss, sradius = self.fixedpoint_layer(
+                out, deq_mode=deq_mode, compute_jac_loss=False
+            )
             thought = self._project_thought(out)
 
-        return thought
+        return thought, jac_loss, sradius
 
     def _project_thought(self, out):
         thought = F.relu(self.conv2(out))
@@ -77,5 +81,5 @@ class FixedPointNet(nn.Module):
         thoughts[i] = thought
 
 
-def fp_net(cfg, width, **kwargs):
-    return FixedPointNet(BasicInjectedBlock, [2], width, cfg)
+def fp_net(cfg, width, block_args, **kwargs):
+    return FixedPointNet(BasicInjectedBlock, [2], width, block_args, cfg)

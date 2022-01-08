@@ -6,6 +6,8 @@ model: recur_net
 arch:
   depth: 44
   width: 120
+  block:
+    norm_type: id
 # Optim
 lr: 0.001
 lr_schedule:

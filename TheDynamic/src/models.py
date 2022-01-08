@@ -10,12 +10,12 @@ from pytorch_lightning.utilities.types import (
     STEP_OUTPUT,
     TRAIN_DATALOADERS,
 )
-from src.models.modules import get_model
 from torchmetrics import MaxMetric
 from torchmetrics.classification.accuracy import Accuracy
+from .modules import get_model
 
 
-class PrefixSumLitModel(LightningModule):
+class LitModel(LightningModule):
     """
     Example of LightningModule for MNIST classification.
 
@@ -32,10 +32,8 @@ class PrefixSumLitModel(LightningModule):
 
     def __init__(
         self,
-        model: str,
         arch: Dict,
         # output_size: int = 10,
-        test_mode: str = "default",
         optimizer_name: str = "adam",
         lr: float = 0.001,
         lr_decay: str = "step",
@@ -53,13 +51,7 @@ class PrefixSumLitModel(LightningModule):
         # it also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
         self.hparams.lr_decay = self.hparams.lr_decay.lower()
-        if self.hparams.test_mode != "default":
-            raise ArgumentError(
-                f"{ic.format()}: Test mode choise of {self.hparams.test_mode} not yet implmented."
-            )
-        self.model = get_model(self.hparams.model, self.hparams.arch)
-        if self.hparams.model == "fp_net":
-            self.model.fixedpoint_layer.save_result = True
+        self.model = get_model(self.hparams.arch)
         # loss function
         self.criterion = torch.nn.CrossEntropyLoss()
 
@@ -69,8 +61,7 @@ class PrefixSumLitModel(LightningModule):
         self.val_acc = Accuracy()
         self.test_acc = Accuracy()
 
-        # for logging best so far validation accuracy
-        self.val_acc_best = MaxMetric()
+        self.model.core.save_result = True
 
     def forward(
         self,
@@ -88,28 +79,20 @@ class PrefixSumLitModel(LightningModule):
 
     def step(self, batch: Any, deq_mode: bool = True):
         x, y = batch
-        sradius = None
-        if self.hparams.model == "fp_net":
-            logits, jac_loss, sradius = self.forward(
-                x,
-                deq_mode=deq_mode,
-                compute_jac_loss=self.hparams.compute_jac_loss,
-                spectral_radius_mode=self.hparams.spectral_radius_mode,
-            )
-            self.log("train/jac_loss", jac_loss, on_step=False, on_epoch=True, prog_bar=True)
-            logits = logits.squeeze()
-            loss = self.criterion(logits, y) + jac_loss
-        else:
-            logits = self.forward(x).squeeze()
-            loss = self.criterion(logits, y)
+        logits, jac_loss, sradius = self.forward(
+            x,
+            deq_mode=deq_mode,
+            compute_jac_loss=self.hparams.compute_jac_loss,
+            spectral_radius_mode=self.hparams.spectral_radius_mode,
+        )
+        # self.log("train/jac_loss", jac_loss, on_step=False, on_epoch=True, prog_bar=True)
+        logits = logits.squeeze()
+        loss = self.criterion(logits, y)
         preds = torch.argmax(logits, dim=1)
         return loss, preds, y, sradius
 
     def training_step(self, batch: Any, batch_idx: int):
-        deq_mode = (
-            self.hparams.model == "fp_net" and self.current_epoch >= self.hparams.pretrain_steps
-        )
-        loss, preds, targets, _ = self.step(batch, deq_mode=deq_mode)
+        loss, preds, targets, _ = self.step(batch)
 
         # log train metrics
         acc = self.train_acc(preds, targets)
@@ -124,57 +107,54 @@ class PrefixSumLitModel(LightningModule):
     def on_train_batch_end(
         self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, unused: Optional[int] = 0
     ) -> None:
-        if self.hparams.model == "fp_net" and self.current_epoch >= self.hparams.pretrain_steps:
-            fp_layer = self.model.fixedpoint_layer
-            self.log(
-                "train/f_nstep",
-                fp_layer.f_result["nstep"],
-                on_step=False,
-                on_epoch=True,
-                prog_bar=True,
-            )
-            self.log(
-                "train/f_lowest",
-                fp_layer.f_result["lowest"],
-                on_step=False,
-                on_epoch=True,
-                prog_bar=False,
-            )
-            self.log(
-                "train/b_nstep",
-                fp_layer.b_result["nstep"],
-                on_step=False,
-                on_epoch=True,
-                prog_bar=False,
-            )
-            self.log(
-                "train/b_lowest",
-                fp_layer.b_result["lowest"],
-                on_step=False,
-                on_epoch=True,
-                prog_bar=False,
-            )
+        fp_layer = self.model.core
+        self.log(
+            "train/f_nstep",
+            fp_layer.f_result["nstep"],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        self.log(
+            "train/f_lowest",
+            fp_layer.f_result["lowest"],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
+        self.log(
+            "train/b_nstep",
+            fp_layer.b_result["nstep"],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
+        self.log(
+            "train/b_lowest",
+            fp_layer.b_result["lowest"],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
         return super().on_train_batch_end(outputs, batch, batch_idx, unused=unused)
 
     def validation_step(self, batch: Any, batch_idx: int):
         loss, preds, targets, sradius = self.step(batch)
-
-        if self.hparams.model == "fp_net":
-            self.log(
-                "val/f_nstep",
-                self.model.fixedpoint_layer.f_result["nstep"],
-                on_step=False,
-                on_epoch=True,
-                prog_bar=True,
-            )
-            self.log(
-                "val/f_lowest",
-                self.model.fixedpoint_layer.f_result["lowest"],
-                on_step=False,
-                on_epoch=True,
-                prog_bar=False,
-            )
-            self.log("val/sradius", sradius, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "val/f_nstep",
+            self.model.core.f_result["nstep"],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        self.log(
+            "val/f_lowest",
+            self.model.core.f_result["lowest"],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
+        self.log("val/sradius", sradius, on_step=False, on_epoch=True, prog_bar=True)
         # log val metrics
         acc = self.val_acc(preds, targets)
         self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
@@ -182,24 +162,19 @@ class PrefixSumLitModel(LightningModule):
 
         return {"loss": loss, "preds": preds, "targets": targets}
 
-    def validation_epoch_end(self, outputs: List[Any]):
-        acc = self.val_acc.compute()  # get val accuracy from current epoch
-        self.val_acc_best.update(acc)
-        self.log("val/acc_best", self.val_acc_best.compute(), on_epoch=True, prog_bar=True)
-
     def test_step(self, batch: Any, batch_idx: int):
         loss, preds, targets = self.step(batch)
         if self.hparams.model == "fp_net":
             self.log(
                 "test/f_nstep",
-                self.model.fixedpoint_layer.f_result["nstep"],
+                self.model.core.f_result["nstep"],
                 on_step=False,
                 on_epoch=True,
                 prog_bar=True,
             )
             self.log(
                 "test/f_lowest",
-                self.model.fixedpoint_layer.f_result["lowest"],
+                self.model.core.f_result["lowest"],
                 on_step=False,
                 on_epoch=True,
                 prog_bar=False,
@@ -210,9 +185,6 @@ class PrefixSumLitModel(LightningModule):
         self.log("test/acc", acc, on_step=False, on_epoch=True)
 
         return {"loss": loss, "preds": preds, "targets": targets}
-
-    def test_epoch_end(self, outputs: List[Any]):
-        pass
 
     def on_epoch_end(self):
         # reset metrics at the end of every epoch!
@@ -228,7 +200,6 @@ class PrefixSumLitModel(LightningModule):
             https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
         """
         optimizer_name = self.hparams.optimizer_name.lower()
-        model = self.hparams.model.lower()
         lr = self.hparams.lr
         base_params = [p for n, p in self.named_parameters()]
         recur_params = []

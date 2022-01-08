@@ -1,45 +1,48 @@
 # @package _global_
 
 # to execute this experiment run:
-# python run.py experiment=recur10_32.yaml
+# python run.py experiment=fixedpoint.yaml
 
 defaults:
   - override /mode: exp.yaml
   - override /trainer: default.yaml
-  - override /model: recur10_120.yaml
+  - override /model: fixedpoint.yaml
   - override /datamodule: tr32_eval44.yaml
   - override /callbacks: null
-  - override /logger: csv
+  - override /logger: null
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
 # name of the run determines folder name in logs
 # it's also accessed by loggers
-name: "recur10_32bit_${model.arch.block.norm_type}"
+name: "fp${datamodule.nbit_train}_ni_l_jacloss_${model.arch.block.norm_type}_${seed}"
 
 seed: 12345
 
 model:
+  pretrain_steps: 0
+  compute_jac_loss: True
   arch:
-    block:
-      norm_type: ???
+    small_init: False
+    f_thres: 50
+    b_thres: 50
 
 trainer:
   min_epochs: 1
   max_epochs: 250
-  gradient_clip_val: 1.0
+  gradient_clip_val: 0.5
 
 datamodule:
-  train_batch_size: 100
-  test_batch_size: 300
+  train_batch_size: 50
+  test_batch_size: 50
 
 callbacks:
   model_checkpoint:
     _target_: pytorch_lightning.callbacks.ModelCheckpoint
     monitor: "val/acc"
     mode: "max"
-    save_top_k: 1
+    save_top_k: 4
     save_last: True
     verbose: False
     dirpath: "checkpoints/"

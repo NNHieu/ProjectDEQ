@@ -1,0 +1,9 @@
+_target_: src.datamodules.prefixsum_dm.PrefixSumDataModule
+
+data_dir: ${data_dir} # data_dir is specified in config.yaml
+nbit_train: 18
+train_val_split: 0.8
+train_batch_size: 100
+nbit_eval: 44
+test_batch_size: 300
+shuffle: True

@@ -9,7 +9,7 @@ defaults:
   - override /model: fixedpoint.yaml
   - override /datamodule: tr32_eval44.yaml
   - override /callbacks: null
-  - override /logger: wandb
+  - override /logger: null
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters

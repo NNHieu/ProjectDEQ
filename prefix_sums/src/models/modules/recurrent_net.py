@@ -26,7 +26,7 @@ from .generic import BasicBlock
 class RecurNet(nn.Module):
     """Modified ResidualNetworkSegment model class"""
 
-    def __init__(self, block, num_blocks, width, depth):
+    def __init__(self, block, num_blocks, width, depth, block_args):
         super(RecurNet, self).__init__()
         assert (depth - 4) % 4 == 0, "Depth not compatible with recurrent architecture."
         self.iters = (depth - 4) // 4
@@ -34,7 +34,9 @@ class RecurNet(nn.Module):
         self.conv1 = nn.Conv1d(1, width, kernel_size=3, stride=1, padding=1, bias=False)
         layers = []
         for i in range(len(num_blocks)):
-            layers.append(self._make_layer(block, width, num_blocks[i], stride=1))
+            layers.append(
+                self._make_layer(block, width, num_blocks[i], stride=1, block_args=block_args)
+            )
 
         self.recur_block = nn.Sequential(*layers)
         self.recur_layer = deq.core.RecurLayer(self.recur_block, self.iters)
@@ -44,11 +46,11 @@ class RecurNet(nn.Module):
         )
         self.conv4 = nn.Conv1d(int(width / 2), 2, kernel_size=3, stride=1, padding=1, bias=False)
 
-    def _make_layer(self, block, planes, num_blocks, stride):
+    def _make_layer(self, block, planes, num_blocks, stride, block_args):
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for strd in strides:
-            layers.append(block(self.in_planes, planes, strd))
+            layers.append(block(self.in_planes, planes, strd, **block_args))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -86,5 +88,5 @@ class RecurNet(nn.Module):
         thoughts[i] = thought
 
 
-def recur_net(depth, width, **kwargs):
-    return RecurNet(BasicBlock, [2], width, depth)
+def recur_net(depth, width, block_args, **kwargs):
+    return RecurNet(BasicBlock, [2], width, depth, block_args)

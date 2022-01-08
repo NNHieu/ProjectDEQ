@@ -1,0 +1,32 @@
+# @package _global_
+defaults:
+  - override /mode: exp.yaml
+  - override /trainer: default.yaml
+  - override /model: fixedpoint.yaml
+  - override /datamodule: null
+  - override /callbacks: null
+  - override /logger: null
+
+metrics:
+  - test/acc
+  - test/loss
+  - test/f_nstep
+  - test/f_lowest
+
+type: fixedpoint
+
+only_test: True
+name: "eval_fixedpoint"
+checkpoint: ???
+data:
+  root: ${data_dir} # data_dir is specified in config.yaml
+  batch_size: 50
+  type:
+    - 32
+    - 44
+    - 54
+    - 64
+
+callbacks:
+  rich_progress_bar:
+    _target_: pytorch_lightning.callbacks.RichProgressBar

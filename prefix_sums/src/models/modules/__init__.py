@@ -14,5 +14,13 @@ def get_model(func_model, arch: dict):
     return:
         net:        Pytorch Network Object
     """
-    net = eval(func_model.lower())(depth=arch["depth"], width=arch["width"], cfg=arch)
+    if arch.get("block"):
+        net = eval(func_model.lower())(
+            depth=arch["depth"], width=arch["width"], block_args=arch["block"], cfg=arch
+        )
+    else:
+        net = eval(func_model.lower())(
+            depth=arch["depth"], width=arch["width"], block_args={}, cfg=arch
+        )
+
     return net

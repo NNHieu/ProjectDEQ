@@ -1,8 +1,11 @@
-_target_: src.models.prefixsum_model.PrefixSumLitModel
+_target_: src.models.LitModel
 
 # name: FixedPointNet
-model: fp_net
 arch:
+  in_features: 2
+  h_features: 4
+  out_features: 2
+  in_trans: linear
   f_solver: anderson
   f_thres: 30
   b_solver: anderson

@@ -11,6 +11,8 @@ metrics:
   - test/acc
   - test/loss
 
+type: recur
+
 only_test: True
 name: "eval_recur"
 checkpoint: ???
