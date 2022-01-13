@@ -129,12 +129,19 @@ def matvec(part_Us, part_VTs, x):
 
 
 def broyden(f, x0, threshold, eps=1e-3, stop_mode="rel", ls=False, name="unknown"):
-    bsz, total_hsize, seq_len = x0.size()
-    g = lambda y: f(y) - y
+    # bsz, total_hsize, seq_len = x0.size()
+    bsz, total_hsize = x0.shape[:2]
+    L = 1
+    for i in x0.shape[2:]:
+        L *= i
+    seq_len = L
+    def g(y):
+        y = y.view_as(x0)
+        return (f(y) - y).view(bsz, total_hsize, -1)
     dev = x0.device
     alternative_mode = "rel" if stop_mode == "abs" else "abs"
 
-    x_est = x0  # (bsz, 2d, L')
+    x_est = x0.view(bsz, total_hsize, -1)  # (bsz, 2d, L')
     gx = g(x_est)  # (bsz, 2d, L')
     nstep = 0
     tnstep = 0
@@ -170,7 +177,7 @@ def broyden(f, x0, threshold, eps=1e-3, stop_mode="rel", ls=False, name="unknown
         for mode in ["rel", "abs"]:
             if diff_dict[mode] < lowest_dict[mode]:
                 if mode == stop_mode:
-                    lowest_xest, lowest_gx = x_est.clone().detach(), gx.clone().detach()
+                    lowest_xest, lowest_gx = x_est.view_as(x0).clone().detach(), gx.clone().detach()
                 lowest_dict[mode] = diff_dict[mode]
                 lowest_step_dict[mode] = nstep
 
@@ -287,6 +294,50 @@ def anderson(f, x0, m=6, lam=1e-4, threshold=50, eps=1e-3, stop_mode="rel", beta
     X = F = None
     return out
 
+def forward_iteration(f, x0, threshold=50, eps=1e-2, stop_mode="rel", **kwargs):
+    alternative_mode = "rel" if stop_mode == "abs" else "abs"
+
+    f0 = f(x0)
+    trace_dict = {"abs": [], "rel": []}
+    lowest_dict = {"abs": 1e8, "rel": 1e8}
+    lowest_step_dict = {"abs": 0, "rel": 0}
+
+    for k in range(threshold):
+        x = f0
+        f0 = f(x)
+        gx = (f0 - x).view_as(x0)
+        abs_diff = gx.norm().item()
+        rel_diff = abs_diff / (1e-5 + f0.norm().item())
+        trace_dict["abs"].append(abs_diff)
+        trace_dict["rel"].append(rel_diff)
+        diff_dict = {"abs": abs_diff, "rel": rel_diff}
+        for mode in ["rel", "abs"]:
+            if diff_dict[mode] < lowest_dict[mode]:
+                if mode == stop_mode:
+                    lowest_xest, lowest_gx = (
+                        x.view_as(x0).clone().detach(),
+                        gx.clone().detach(),
+                    )
+                lowest_dict[mode] = diff_dict[mode]
+                lowest_step_dict[mode] = k
+
+        if trace_dict[stop_mode][-1] < eps:
+            for _ in range(threshold - 1 - k):
+                trace_dict[stop_mode].append(lowest_dict[stop_mode])
+                trace_dict[alternative_mode].append(lowest_dict[alternative_mode])
+            break
+    out = {
+        "result": lowest_xest,
+        "lowest": lowest_dict[stop_mode],
+        "nstep": lowest_step_dict[stop_mode],
+        "prot_break": False,
+        "abs_trace": trace_dict["abs"],
+        "rel_trace": trace_dict["rel"],
+        "eps": eps,
+        "threshold": threshold,
+    }
+    x = f0 = None
+    return out
 
 def analyze_broyden(res_info, err=None, judge=True, name="forward", training=True, save_err=True):
     """

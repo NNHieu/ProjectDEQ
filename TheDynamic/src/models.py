@@ -12,7 +12,7 @@ from pytorch_lightning.utilities.types import (
 )
 from torchmetrics import MaxMetric
 from torchmetrics.classification.accuracy import Accuracy
-from .modules import get_model
+from modules import get_model
 
 
 class LitModel(LightningModule):
@@ -44,6 +44,7 @@ class LitModel(LightningModule):
         warmup_period: int = 10,
         compute_jac_loss: bool = False,
         spectral_radius_mode: bool = False,
+        init_std: float = 1.0,
     ):
         super().__init__()
 
@@ -51,7 +52,7 @@ class LitModel(LightningModule):
         # it also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
         self.hparams.lr_decay = self.hparams.lr_decay.lower()
-        self.model = get_model(self.hparams.arch)
+        self.model = get_model(self.hparams.arch, init_std=self.hparams.init_std)
         # loss function
         self.criterion = torch.nn.CrossEntropyLoss()
 
@@ -163,22 +164,21 @@ class LitModel(LightningModule):
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def test_step(self, batch: Any, batch_idx: int):
-        loss, preds, targets = self.step(batch)
-        if self.hparams.model == "fp_net":
-            self.log(
-                "test/f_nstep",
-                self.model.core.f_result["nstep"],
-                on_step=False,
-                on_epoch=True,
-                prog_bar=True,
-            )
-            self.log(
-                "test/f_lowest",
-                self.model.core.f_result["lowest"],
-                on_step=False,
-                on_epoch=True,
-                prog_bar=False,
-            )
+        loss, preds, targets, sradius = self.step(batch)
+        self.log(
+            "test/f_nstep",
+            self.model.core.f_result["nstep"],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        self.log(
+            "test/f_lowest",
+            self.model.core.f_result["lowest"],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
         # log test metrics
         acc = self.test_acc(preds, targets)
         self.log("test/loss", loss, on_step=False, on_epoch=True)

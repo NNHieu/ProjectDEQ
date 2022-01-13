@@ -1,6 +1,7 @@
 _target_: src.models.LitModel
 
 # name: FixedPointNet
+init_std: 1.
 arch:
   in_features: 2
   h_features: 4
@@ -14,9 +15,9 @@ arch:
   num_layers: 5
   depth: 0
   width: 120
-  small_init: False
   block:
     norm_type: 'batch'
+    activation: 'relu'
 # Optim
 lr: 0.001
 lr_schedule:

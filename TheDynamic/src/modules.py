@@ -10,6 +10,7 @@ if DEQ_LIB not in sys.path:
 import deq
 
 
+
 class Block(nn.Module):
     def __init__(self, channel, activation="relu") -> None:
         super(Block, self).__init__()
@@ -20,16 +21,16 @@ class Block(nn.Module):
         self.lin1 = nn.Linear(channel, channel, bias=False)
         self.lin2 = nn.Linear(channel, channel, bias=False)
 
-        # if activation == 'relu':
-        #     self.sigma=F.relu
-        # elif activation == 'tanh':
-        #     self.sigma = F.tanh
+        if activation == 'relu':
+            self.sigma=F.relu
+        elif activation == 'tanh':
+            self.sigma = F.tanh
 
     def forward(self, z, x):
-        out = self.norm1(F.tanh(self.lin1(z)))
+        out = self.norm1(self.sigma(self.lin1(z)))
         out = self.lin2(out) + x
         out = self.norm2(out)
-        return F.tanh(out)
+        return self.sigma(out)
 
 
 class PaddingBlock(nn.Module):
@@ -65,13 +66,17 @@ class Net(nn.Module):
         out = self.out_trans(z)
         return out, jac_loss, sradius
 
+def init_weights(m, std=1.0):
+    if isinstance(m, nn.Linear):
+        m.weight.data.normal_(0.0, std)
 
-def get_model(arch):
+def get_model(arch, init_std=1.0):
     if arch.in_trans == "linear":
         in_trans = nn.Sequential(
             nn.Linear(arch.in_features, arch.h_features), nn.ReLU(inplace=True)
         )
     elif arch.in_trans == "padding":
         in_trans = PaddingBlock(arch.h_features)
-    f = Block(arch.h_features)
+    f = Block(arch.h_features, activation=arch.block.activation)
+    f.apply(lambda m: init_weights(m, std=init_std))
     return Net(arch.in_features, arch.h_features, arch.out_features, in_trans, f, arch)

@@ -16,15 +16,18 @@ defaults:
 
 # name of the run determines folder name in logs
 # it's also accessed by loggers
-name: "fp${model.arch.h_features}_${model.arch.block.activation}_${seed}"
+name: "fractal_fp${model.arch.in_features}_${model.arch.h_features}_std=${model.init_std}_${model.arch.block.activation}_${seed}"
 
 seed: 12345
 
 model:
   arch:
+    f_thres: 100
+    b_thres: 100
     in_trans: linear
     block:
       activation: tanh
+  init_std: ???
 
 trainer:
   min_epochs: 1

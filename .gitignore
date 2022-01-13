@@ -37,8 +37,12 @@ data/
 *.log
 log/
 runs/
+multiruns/
 *_old/
 private_*
 results/
 
 .env
+
+**/notebooks/*
+**/media/*

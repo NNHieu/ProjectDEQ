@@ -18,6 +18,8 @@ class DEQLayer(nn.Module):
         self.f = f
         self.parse_cfg(conf)
         self.save_result = False
+        self.f_eps = 1e-3
+        self.b_eps= 1e-3
 
     def parse_cfg(self, cfg):
         """
@@ -47,6 +49,8 @@ class DEQLayer(nn.Module):
 
         f_thres = kwargs.get("f_thres", self.f_thres)
         b_thres = kwargs.get("b_thres", self.b_thres)
+        f_eps = kwargs.get("f_eps", self.f_eps)
+        b_eps = kwargs.get("b_eps", self.b_eps)
 
         func = lambda z: self.f(z, x)
         jac_loss = torch.tensor(0.0).to(x)
@@ -68,7 +72,7 @@ class DEQLayer(nn.Module):
         else:
             with torch.no_grad():
                 result = self.f_solver(
-                    func, z1, threshold=f_thres, stop_mode=self.stop_mode, name="forward"
+                    func, z1, threshold=f_thres, stop_mode=self.stop_mode, name="forward", eps=f_eps
                 )
                 z1 = result["result"]
                 if self.save_result:
@@ -98,6 +102,7 @@ class DEQLayer(nn.Module):
                         threshold=b_thres,
                         stop_mode=self.stop_mode,
                         name="backward",
+                        eps=b_eps
                     )
                     r = result["result"]
                     if self.save_result:
