@@ -16,23 +16,18 @@ defaults:
 
 # name of the run determines folder name in logs
 # it's also accessed by loggers
-name: "fractal_${model.arch.core}${model.arch.in_features}_${model.arch.h_features}_std=${model.init_std}_${model.arch.block.activation}_${seed}_${model.arch.f_solver}"
+name: "1step${model.arch.h_features}_${datamodule.dim}_${seed}_${model.arch.f_thres}"
 
 seed: 12345
 
 model:
   arch:
-    in_features: ${datamodule.dim}
-    f_thres: 60
-    b_thres: 60
-    in_trans: linear
-    block:
-      activation: tanh
-  init_std: ???
+    core: single_step
+    in_features: 2
 
 trainer:
   min_epochs: 1
-  max_epochs: 250
+  max_epochs: 50
   gradient_clip_val: 0.5
 
 datamodule:

@@ -16,7 +16,7 @@ defaults:
 
 # name of the run determines folder name in logs
 # it's also accessed by loggers
-name: "fractal_${model.arch.core}${model.arch.in_features}_${model.arch.h_features}_std=${model.init_std}_${model.arch.block.activation}_${seed}_${model.arch.f_solver}"
+name: "perturb_regularize_${model.arch.core}${model.arch.in_features}_${model.arch.h_features}_${model.arch.block.activation}_${seed}_${model.arch.f_solver}_${model.perturb_std}_${model.perturb_weight}"
 
 seed: 12345
 
@@ -28,12 +28,13 @@ model:
     in_trans: linear
     block:
       activation: tanh
-  init_std: ???
+  init_std: 1.
+  perturb_std: 0.5
+  perturb_weight: 0.1
 
 trainer:
   min_epochs: 1
   max_epochs: 250
-  gradient_clip_val: 0.5
 
 datamodule:
   train_batch_size: 50
@@ -44,7 +45,7 @@ callbacks:
     _target_: pytorch_lightning.callbacks.ModelCheckpoint
     monitor: "val/acc"
     mode: "max"
-    save_top_k: 4
+    save_top_k: 1
     save_last: True
     verbose: False
     dirpath: "checkpoints/"

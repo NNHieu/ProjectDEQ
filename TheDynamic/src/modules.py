@@ -1,15 +1,28 @@
+import imp
 import torch
 from torch import nn
 from torch.nn import functional as F
 import os
 import sys
 
-DEQ_LIB = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src"))
-if DEQ_LIB not in sys.path:
-    sys.path.append(DEQ_LIB)
-import deq
+from deq.standard.models import core as std_deq
+from deq.mon import mon, splitting as sp
+from deq.mon.train import expand_args, MON_DEFAULTS
 
+class ResNetLayer(nn.Module):
+    def __init__(self, n_channels, n_inner_channels, kernel_size=3, num_groups=8):
+        super().__init__()
+        self.conv1 = nn.Conv2d(n_channels, n_inner_channels, kernel_size, padding=kernel_size//2, bias=False)
+        self.conv2 = nn.Conv2d(n_inner_channels, n_channels, kernel_size, padding=kernel_size//2, bias=False)
+        self.norm1 = nn.GroupNorm(num_groups, n_inner_channels)
+        self.norm2 = nn.GroupNorm(num_groups, n_channels)
+        self.norm3 = nn.GroupNorm(num_groups, n_channels)
+        self.conv1.weight.data.normal_(0, 0.01)
+        self.conv2.weight.data.normal_(0, 0.01)
 
+    def forward(self, z, x):
+        y = self.norm1(F.relu(self.conv1(z)))
+        return self.norm3(F.relu(z + self.norm2(x + self.conv2(y))))
 
 class Block(nn.Module):
     def __init__(self, channel, activation="relu") -> None:
@@ -24,7 +37,7 @@ class Block(nn.Module):
         if activation == 'relu':
             self.sigma=F.relu
         elif activation == 'tanh':
-            self.sigma = F.tanh
+            self.sigma = torch.tanh
 
     def forward(self, z, x):
         out = self.norm1(self.sigma(self.lin1(z)))
@@ -54,10 +67,10 @@ class AxisProject(nn.Module):
 
 
 class Net(nn.Module):
-    def __init__(self, in_feature, h_feature, out_feature, in_trans, f, deq_conf):
+    def __init__(self, core, h_feature, out_feature, in_trans):
         super(Net, self).__init__()
         self.in_trans = in_trans
-        self.core = deq.core.DEQLayer(f, deq_conf)
+        self.core = core
         self.out_trans = nn.Linear(h_feature, out_feature)
 
     def forward(self, x, **kwargs):
@@ -65,6 +78,20 @@ class Net(nn.Module):
         z, jac_loss, sradius = self.core(phi_x, **kwargs)
         out = self.out_trans(z)
         return out, jac_loss, sradius
+
+class SingleMonDEQFcLayer(nn.Module):
+
+    def __init__(self, splittingMethod, in_dim, out_dim, m=0.1, **kwargs):
+        super().__init__()
+        linear_module = mon.MONSingleFc(in_dim, out_dim, m=m)
+        nonlin_module = mon.MONReLU()
+        self.mon = splittingMethod(linear_module, nonlin_module, **expand_args(MON_DEFAULTS, kwargs))
+        self.stats = self.mon.stats
+
+    def forward(self, x, **kwargs):
+        x = x.view(x.shape[0], -1)
+        z = self.mon(x)
+        return z[-1], None, None
 
 def init_weights(m, std=1.0):
     if isinstance(m, nn.Linear):
@@ -77,6 +104,18 @@ def get_model(arch, init_std=1.0):
         )
     elif arch.in_trans == "padding":
         in_trans = PaddingBlock(arch.h_features)
-    f = Block(arch.h_features, activation=arch.block.activation)
-    f.apply(lambda m: init_weights(m, std=init_std))
-    return Net(arch.in_features, arch.h_features, arch.out_features, in_trans, f, arch)
+        # arch.get('core', 'deq')
+    core_type = arch.get('core', 'deq')
+    if core_type == 'deq':
+        f = Block(arch.h_features, activation=arch.block.activation)
+        f.apply(lambda m: init_weights(m, std=init_std))
+        core = std_deq.DEQLayer(f, arch)
+    elif core_type == 'single_step':
+        f = Block(arch.h_features, activation=arch.block.activation)
+        core = std_deq.RecurLayer(f, arch.f_thres)
+    elif core_type == 'mondeq':
+        core = SingleMonDEQFcLayer(sp.MONPeacemanRachford, arch.h_features, arch.h_features, alpha=1.0,
+                    max_iter=300,
+                    tol=1e-3,
+                    m=1.0)
+    return Net(core, arch.h_features, arch.out_features, in_trans)

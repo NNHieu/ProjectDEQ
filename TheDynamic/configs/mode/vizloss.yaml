@@ -1,0 +1,25 @@
+# @package _global_
+
+# run in experiment mode with:
+# `python lossland.py mode=exp name=experiment_name`
+
+vizloss_mode: True
+name: ???
+
+hydra:
+  # sets output paths for all file logs to `logs/experiment/name'
+  run:
+    dir: logs/lossland/${name}/${model.arch.core}_${model.arch.f_solver}_${model.arch.f_thres}_${model.arch.f_eps}
+  sweep:
+    dir: logs/lossland/${name}
+    subdir: ${model.arch.core}_${model.arch.f_solver}_${model.arch.f_thres}_${model.arch.f_eps}
+
+checkpoint: ???
+rect:
+  - -1
+  - -1
+  - 1
+  - 1
+resolution:
+  - 31
+  - 31

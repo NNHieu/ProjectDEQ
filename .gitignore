@@ -29,13 +29,18 @@ __pycache__/
 *.pth
 *.pkl
 checkpoints/*
+*.pdf
+*.gif
+*.h5
 
 *.data
 data/
 /datasets/*
 
 *.log
-log/
+log/*
+logs/
+lightning_logs/
 runs/
 multiruns/
 *_old/

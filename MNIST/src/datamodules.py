@@ -6,9 +6,10 @@ from easy_to_hard_data import PrefixSumDataset
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from torchvision.transforms import transforms
+from torchvision.datasets import MNIST
 
 
-class GMDataModule(LightningDataModule):
+class MnistDM(LightningDataModule):
     """
     LightningDataModule.
 
@@ -28,8 +29,6 @@ class GMDataModule(LightningDataModule):
 
     def __init__(
         self,
-        dim: int,
-        rho: float,
         data_dir: str = "data/",
         train_batch_size: int = 100,
         test_batch_size: int = -1,
@@ -45,20 +44,29 @@ class GMDataModule(LightningDataModule):
         if self.hparams.test_batch_size <= 0:
             self.hparams.test_batch_size = self.hparams.train_batch_size
         # self.dims is returned when you call datamodule.size()
-        self.dims = (int(self.hparams.dim),)
+        self.dims = (1,28,28)
 
-        self.data_train: Optional[Dataset] = None
-        self.data_val: Optional[Dataset] = None
-        self.data_test: Optional[Dataset] = None
+        self.data_train: Optional[MNIST] = None
+        self.data_val: Optional[MNIST] = None
+        self.data_test: Optional[MNIST] = None
+
+        self.transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,)),
+            ]
+        )
 
     @property
     def num_classes(self) -> int:
-        return 2
+        return 10
 
     def prepare_data(self):
         """Download data if needed. This method is called only from a single GPU.
         Do not use it to assign state (self.x = y)."""
-        pass
+        # download
+        MNIST(self.hparams.data_dir, train=True, download=True)
+        MNIST(self.hparams.data_dir, train=False, download=True)
 
     def setup(self, stage: Optional[str] = None):
         """Load data. Set variables: `self.data_train`, `self.data_val`, `self.data_test`.
@@ -67,19 +75,14 @@ class GMDataModule(LightningDataModule):
 
         # load datasets only if they're not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
-            root = os.path.join(self.hparams.data_dir, str(self.hparams.dim))
-            train_data = torch.load(
-                os.path.join(root, f"train{self.hparams.dim}_{self.hparams.rho}.pth")
-            )
-            self.data_train = TensorDataset(
-                train_data["X"], torch.div((train_data["target"].squeeze() + 1), 2, rounding_mode='trunc')
-            )
+            # Assign train/val datasets for use in dataloaders
+            if stage == "fit" or stage is None:
+                self.data_train = MNIST(self.hparams.data_dir, train=True, transform=self.transform)
+                self.data_val = MNIST(self.hparams.data_dir, train=False, transform=self.transform)
 
-            eval_data = torch.load(
-                os.path.join(root, f"eval{self.hparams.dim}_{self.hparams.rho}.pth")
-            )
-            self.data_val = TensorDataset(eval_data["X"], torch.div((eval_data["target"].squeeze() + 1), 2, rounding_mode='trunc'))
-            self.data_test = self.data_val
+            # Assign test dataset for use in dataloader(s)
+            if stage == "test" or stage is None:
+                self.data_test = MNIST(self.hparams.data_dir, train=False, transform=self.transform)
 
     def train_dataloader(self):
         return DataLoader(

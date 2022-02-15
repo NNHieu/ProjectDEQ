@@ -23,8 +23,8 @@ seed: 12345
 model:
   arch:
     in_features: ${datamodule.dim}
-    f_thres: 60
-    b_thres: 60
+    f_thres: 100
+    b_thres: 100
     in_trans: linear
     block:
       activation: tanh

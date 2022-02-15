@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from train import cuda
+from .train import cuda
 
 class Meter(object):
     """Computes and stores the min, max, avg, and current values"""
@@ -29,6 +29,8 @@ class SplittingMethodStats(object):
     def __init__(self):
         self.fwd_iters = Meter()
         self.bkwd_iters = Meter()
+        self.fwd_err = Meter()
+        self.bkwd_err = Meter()
         self.fwd_time = Meter()
         self.bkwd_time = Meter()
 
@@ -37,6 +39,8 @@ class SplittingMethodStats(object):
         self.fwd_time.reset()
         self.bkwd_iters.reset()
         self.bkwd_time.reset()
+        self.fwd_err.reset()
+        self.bkwd_err.reset()
 
     def report(self):
         print('Fwd iters: {:.2f}\tFwd Time: {:.4f}\tBkwd Iters: {:.2f}\tBkwd Time: {:.4f}\n'.format(

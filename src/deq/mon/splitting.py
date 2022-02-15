@@ -1,7 +1,9 @@
+from unittest import result
 import torch
 import torch.nn as nn
 from torch.autograd import Function
-import utils
+# from . import utils
+from deq.shared.stats import SolverStats
 import time
 
 class MONForwardBackwardSplitting(nn.Module):
@@ -14,7 +16,7 @@ class MONForwardBackwardSplitting(nn.Module):
         self.tol = tol
         self.max_iter = max_iter
         self.verbose = verbose
-        self.stats = utils.SplittingMethodStats()
+        self.stats = SolverStats()
         self.save_abs_err = False
 
     def forward(self, x):
@@ -113,12 +115,12 @@ class MONPeacemanRachford(nn.Module):
         self.tol = tol
         self.max_iter = max_iter
         self.verbose = verbose
-        self.stats = utils.SplittingMethodStats()
+        self.stats = SolverStats()
         self.save_abs_err = False
 
     def forward(self, x):
         """ Forward pass of the MON, find an equilibirum with forward-backward splitting"""
-
+        result = {}
         start = time.time()
         # Run the forward pass _without_ tracking gradients
         self.linear_module.init_inverse(1 + self.alpha, -self.alpha)
@@ -151,7 +153,6 @@ class MONPeacemanRachford(nn.Module):
 
         if self.verbose:
             print("Forward: ", it, err)
-
         # Run the forward pass one more time, tracking gradients, then backward placeholder
         zn = self.linear_module(x, *z)
         zn = self.nonlin_module(*zn)
@@ -159,6 +160,7 @@ class MONPeacemanRachford(nn.Module):
         zn = self.Backward.apply(self, *zn)
         self.stats.fwd_iters.update(it)
         self.stats.fwd_time.update(time.time() - start)
+        self.stats.fwd_err.update(err)
         self.errs = errs
         return zn
 
@@ -209,5 +211,6 @@ class MONPeacemanRachford(nn.Module):
 
             sp.stats.bkwd_iters.update(it)
             sp.stats.bkwd_time.update(time.time() - start)
+            sp.stats.bkwd_err.update(err)
             sp.errs = errs
             return (None,) + dg

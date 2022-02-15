@@ -9,15 +9,13 @@ arch:
   in_trans: linear
   f_solver: anderson
   f_thres: 30
-  f_eps: 0.001
   b_solver: anderson
   b_thres: 30
-  b_eps: 0.001
   stop_mode: rel
   num_layers: 5
   depth: 0
   width: 120
-  core: deq
+  core: mondeq
   block:
     norm_type: 'batch'
     activation: 'relu'
@@ -34,5 +32,3 @@ warmup_period: 10
 pretrain_steps: 3
 compute_jac_loss: False
 spectral_radius_mode: False
-perturb_std: 0.
-perturb_weight: 1.

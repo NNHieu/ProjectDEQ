@@ -1,7 +1,6 @@
 import imp
 import sys
 from ctypes import ArgumentError
-from turtle import backward
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -48,12 +47,9 @@ class LitModel(LightningModule):
         compute_jac_loss: bool = False,
         spectral_radius_mode: bool = False,
         init_std: float = 1.0,
-        perturb_std: float = 0.,
-        perturb_weight: float = 1.,
     ):
         super().__init__()
-        # manually manage the optimization process
-        # self.automatic_optimization=False
+
         # this line allows to access init params with 'self.hparams' attribute
         # it also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
@@ -84,15 +80,6 @@ class LitModel(LightningModule):
             spectral_radius_mode=spectral_radius_mode,
         )
 
-    def get_z(self, batch_phix, **kwargs):
-        return self.model.core(batch_phix, **kwargs)
-
-    def get_phix(self, batch):
-        return self.model.in_trans(batch)
-
-    def get_output(self, batch_z):
-        return self.model.out_trans(batch_z)
-
     def step(self, batch: Any, deq_mode: bool = True):
         x, y = batch
         logits, jac_loss, sradius = self.forward(
@@ -107,65 +94,18 @@ class LitModel(LightningModule):
         preds = torch.argmax(logits, dim=1)
         return loss, preds, y, sradius
 
-    def manual_training_step(self, batch: Any, batch_idx: int):
-        opt: torch.optim.Optimizer = self.optimizers()
-        opt.zero_grad()
-        x, y = batch
-        z, _, _ = self.get_z(self.get_phix(x), deq_mode=True, compute_jac_loss=False, spectral_radius_mode=False)
-        logits = self.get_output(z).squeeze()
-        loss = self.criterion(logits, y)
-        loss_value = loss.detach()
-        preds = torch.argmax(logits, dim=1)
-
-        self.manual_backward(loss)
-        opt.step()
-
-        if self.hparams.perturb_std > 0:
-            opt.zero_grad()
-            with torch.no_grad():
-                perturbed_x = x + torch.normal(torch.zeros_like(x), self.hparams.perturb_std)
-                # perturbed_x = x + 1e-1
-                dx = perturbed_x - x
-                norm_dx = torch.norm(dx, dim=-1)
-                non_zeros = norm_dx > 0
-                norm_dx = norm_dx[non_zeros]
-                perturbed_x = perturbed_x[non_zeros]
-            perturbed_phix = self.get_phix(perturbed_x)
-            perturbed_z,_, _ = self.get_z(perturbed_phix, deq_mode=True, compute_jac_loss=False, spectral_radius_mode=False, backward=True)
-            norm_dz = torch.norm(perturbed_z - z.detach()[non_zeros], dim=-1)
-            perturb_loss = torch.sum(norm_dz/norm_dx)/norm_dz.shape[0]
-            self.log("train/ploss", perturb_loss, on_step=True, on_epoch=False, prog_bar=True)
-            perturb_loss = self.hparams.perturb_weight*perturb_loss
-            self.manual_backward(perturb_loss)
-            opt.step()
-
-        # log train metrics
-        acc = self.train_acc(preds, y)
-        self.log("train/loss", loss_value, on_step=True, on_epoch=False, prog_bar=True)
-        self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
-
-        # we can return here dict with any tensors
-        # and then read it in some callback or in `training_epoch_end()`` below
-        # remember to always return loss from `training_step()` or else backpropagation will fail!
-        return {"loss": loss_value, "preds": preds, "targets": y}
-
     def training_step(self, batch: Any, batch_idx: int):
-        x, y = batch
-        z, _, _ = self.get_z(self.get_phix(x), deq_mode=True, compute_jac_loss=False, spectral_radius_mode=False)
-        logits = self.get_output(z).squeeze()
-        loss = self.criterion(logits, y)
-        preds = torch.argmax(logits, dim=1)
-
+        loss, preds, targets, _ = self.step(batch)
 
         # log train metrics
-        acc = self.train_acc(preds, y)
-        self.log("train/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
+        acc = self.train_acc(preds, targets)
+        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
         self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
 
         # we can return here dict with any tensors
         # and then read it in some callback or in `training_epoch_end()`` below
         # remember to always return loss from `training_step()` or else backpropagation will fail!
-        return {"loss": loss, "preds": preds, "targets": y}
+        return {"loss": loss, "preds": preds, "targets": targets}
 
     def on_train_batch_end(
         self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, unused: Optional[int] = 0
@@ -316,3 +256,30 @@ class LitModel(LightningModule):
             )
             sys.exit()
         return ([optimizer], [lr_scheduler])
+
+
+def pred(model, solver, X, thres, stop_mode, eps, no_core=False, latest=False):
+    model.eval()
+    # target = torch.ones(X.shape[0])
+    with torch.no_grad():
+        X = X.to(device)
+        phi_X = model.model.in_trans(X)
+        if no_core:
+            state = phi_X
+            diff = 0
+            nstep = 0
+        else:
+            state = torch.zeros_like(phi_X)
+            func = lambda z: model.model.core.f(z, phi_X)
+            result = solver(func, state, threshold=thres, stop_mode=stop_mode, name="forward", eps=eps)
+            if latest:
+                nstep = thres
+                diff = result[f'{stop_mode}_trace'][-1]
+                state = result['latest']
+            else:
+                nstep = result['nstep']
+                diff = result['lowest']
+                state = result['result']
+        logits = model.model.out_trans(state)
+        Z = torch.softmax(logits, dim=1).cpu().numpy()
+    return Z, diff, nstep

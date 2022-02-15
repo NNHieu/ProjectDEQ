@@ -1,3 +1,4 @@
+from turtle import xcor
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -84,7 +85,8 @@ def init_fft_conv(weight, hw):
     kernel = torch.flip(weight, (2, 3))
     kernel = F.pad(F.pad(kernel, (0, hw[0] - weight.shape[2], 0, hw[1] - weight.shape[3])),
                    (0, py, 0, px), mode="circular")[:, :, py:, px:]
-    return fft_to_complex_matrix(torch.rfft(kernel, 2, onesided=False))
+    return fft_to_complex_matrix(torch.view_as_real(torch.fft.fft(kernel, dim=2)))
+
 
 
 def fft_conv(x, w_fft, transpose=False):
@@ -95,10 +97,13 @@ def fft_conv(x, w_fft, transpose=False):
         w_fft: conv kernel processed by init_fft_conv
         transpose: flag of whether to transpose convolution
     """
-    x_fft = fft_to_complex_vector(torch.rfft(x, 2, onesided=False))
+    # x_fft = fft_to_complex_vector(torch.rfft(x, 2, onesided=False))
+    x_fft = fft_to_complex_vector(torch.fft.fft(x, dim=2))
+
     wx_fft = x_fft.bmm(w_fft.transpose(1, 2)) if not transpose else x_fft.bmm(w_fft)
     wx_fft = wx_fft.view(x.shape[2], x.shape[3], wx_fft.shape[1], -1, 2).permute(2, 3, 0, 1, 4)
-    return torch.irfft(wx_fft, 2, onesided=False)
+    # return torch.irfft(wx_fft, 2, onesided=False)
+    return torch.fft.irfft(wx_fft, n=wx_fft.shape[2], dim=2)
 
 
 class MONSingleConv(nn.Module):
@@ -384,7 +389,8 @@ class MONMultiConv(nn.Module):
         self.beta = beta
 
     def apply_inverse_conv(self, z, i):
-        z0_fft = fft_to_complex_vector(torch.rfft(z, 2, onesided=False))
+
+        z0_fft = fft_to_complex_vector(torch.fft.fft(z, dim=2))
         y0 = 0.5 * z0_fft.bmm((self.D2[i] @ self.D1inv[i]).transpose(1, 2))[self.S_idx[i]]
         n = self.conv_shp[i]
         y1 = y0[:n ** 2 // 4] + y0[n ** 2 // 4:n ** 2 // 2] + y0[n ** 2 // 2:3 * n ** 2 // 4] + y0[3 * n ** 2 // 4:]
@@ -394,11 +400,14 @@ class MONMultiConv(nn.Module):
         y5 = 0.5 * y4.bmm(self.D2[i] @ self.D1inv[i].transpose(1, 2))
         x0 = z0_fft.bmm(self.D1inv[i].transpose(1, 2)) - y5
         x0 = x0.view(n, n, x0.shape[1], -1, 2).permute(2, 3, 0, 1, 4)
-        x0 = torch.irfft(x0, 2, onesided=False)
+        # x0 = torch.irfft(x0, 2, onesided=False)
+        x0  = torch.fft.irfft(x0, n=x0.shape[2], dim=2)
         return x0
 
     def apply_inverse_conv_transpose(self, g, i):
-        g0_fft = fft_to_complex_vector(torch.rfft(g, 2, onesided=False))
+        # g0_fft = fft_to_complex_vector(torch.rfft(g, 2, onesided=False))
+        g0_fft = fft_to_complex_vector(torch.fft.fft(g, dim=2))
+
         y0 = 0.5 * g0_fft.bmm(self.D1inv[i] @ self.D2[i].transpose(1, 2))[self.S_idx[i]]
         n = self.conv_shp[i]
         y1 = y0[:n ** 2 // 4] + y0[n ** 2 // 4:n ** 2 // 2] + y0[n ** 2 // 2:3 * n ** 2 // 4] + y0[3 * n ** 2 // 4:]
@@ -408,7 +417,8 @@ class MONMultiConv(nn.Module):
         y5 = 0.5 * y4.bmm(self.D2[i] @ self.D1inv[i])
         x0 = g0_fft.bmm(self.D1inv[i]) - y5
         x0 = x0.view(n, n, x0.shape[1], -1, 2).permute(2, 3, 0, 1, 4)
-        x0 = torch.irfft(x0, 2, onesided=False)
+        # x0 = torch.irfft(x0, 2, onesided=False)
+        x0 = torch.fft.irfft(x0, n=x0.shape[2], dim=2)
         return x0
 
     def inverse(self, *z):

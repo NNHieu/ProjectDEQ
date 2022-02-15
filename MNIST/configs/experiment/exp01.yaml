@@ -7,7 +7,7 @@ defaults:
   - override /mode: exp.yaml
   - override /trainer: default.yaml
   - override /model: fixedpoint.yaml
-  - override /datamodule: dim2_rho2.yaml
+  - override /datamodule: mnist.yaml
   - override /callbacks: null
   - override /logger: null
 
@@ -16,28 +16,23 @@ defaults:
 
 # name of the run determines folder name in logs
 # it's also accessed by loggers
-name: "fractal_${model.arch.core}${model.arch.in_features}_${model.arch.h_features}_std=${model.init_std}_${model.arch.block.activation}_${seed}_${model.arch.f_solver}"
+name: "fp_${seed}_${model.arch.f_solver}_${model.arch.f_solver}"
 
 seed: 12345
 
 model:
   arch:
-    in_features: ${datamodule.dim}
     f_thres: 60
     b_thres: 60
-    in_trans: linear
-    block:
-      activation: tanh
-  init_std: ???
 
 trainer:
   min_epochs: 1
-  max_epochs: 250
+  max_epochs: 30
   gradient_clip_val: 0.5
 
 datamodule:
-  train_batch_size: 50
-  test_batch_size: 50
+  train_batch_size: 64
+  test_batch_size: 128
 
 callbacks:
   model_checkpoint:

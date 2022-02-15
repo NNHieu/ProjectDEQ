@@ -1,13 +1,13 @@
 import logging
-import os
-import sys
+import time
 
 import torch
 from icecream import ic
 from torch import autograd, nn
 
 from ..lib.jacobian import jac_loss_estimate, power_method
-from ..lib.solvers import anderson, broyden
+from ..lib.solvers import anderson, broyden, forward_iteration
+from deq.shared.stats import SolverStats
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +18,7 @@ class DEQLayer(nn.Module):
         self.f = f
         self.parse_cfg(conf)
         self.save_result = False
-        self.f_eps = 1e-3
-        self.b_eps= 1e-3
+        self.stats = SolverStats()
 
     def parse_cfg(self, cfg):
         """
@@ -34,6 +33,8 @@ class DEQLayer(nn.Module):
         self.f_thres = cfg["f_thres"]
         self.b_thres = cfg["b_thres"]
         self.stop_mode = cfg["stop_mode"]
+        self.f_eps = cfg.get("f_eps", 1e-3)
+        self.b_eps = cfg.get("f_eps", 1e-3)
 
     def forward(
         self,
@@ -41,9 +42,10 @@ class DEQLayer(nn.Module):
         deq_mode=True,
         compute_jac_loss=False,
         spectral_radius_mode=False,
-        writer=None,
+        backward: bool = True,
         **kwargs
     ):
+        start = time.time()
         # ----------------Setting up-------------------------------
         bsz = x.shape[0]
 
@@ -63,9 +65,7 @@ class DEQLayer(nn.Module):
             for layer_ind in range(self.num_layers):
                 z1 = func(z1)
             new_z1 = z1
-
-            if self.training:
-                if compute_jac_loss:
+            if self.training and compute_jac_loss:
                     z2 = z1.clone().detach().requires_grad_()
                     new_z2 = func(z2)
                     jac_loss = jac_loss_estimate(new_z2, z2)
@@ -75,27 +75,19 @@ class DEQLayer(nn.Module):
                     func, z1, threshold=f_thres, stop_mode=self.stop_mode, name="forward", eps=f_eps
                 )
                 z1 = result["result"]
-                if self.save_result:
-                    del result["result"]
-                    self.f_result = result
+                self.stats.fwd_iters.update(result['nstep'])
+                self.stats.fwd_err.update(result['lowest'])
             new_z1 = z1
 
-            if (not self.training) and spectral_radius_mode:
-                with torch.enable_grad():
-                    new_z1 = func(z1.requires_grad_())
-                _, sradius = power_method(new_z1, z1, n_iters=150)
-
-            if self.training:
+            if self.training and backward:
                 new_z1 = func(z1.requires_grad_())
-                if compute_jac_loss:
-                    jac_loss = jac_loss_estimate(new_z1, z1)
+                if compute_jac_loss: jac_loss = jac_loss_estimate(new_z1, z1)
 
                 def backward_hook(grad):
-                    # ic()
+                    start = time.time()
                     if self.hook is not None:
                         self.hook.remove()
                         torch.cuda.synchronize()
-                    # ic()
                     result = self.b_solver(
                         lambda y: autograd.grad(new_z1, z1, y, retain_graph=True)[0] + grad,
                         torch.zeros_like(grad),
@@ -105,14 +97,17 @@ class DEQLayer(nn.Module):
                         eps=b_eps
                     )
                     r = result["result"]
-                    if self.save_result:
-                        del result["result"]
-                        self.b_result = result
+                    self.stats.bkwd_iters.update(result['nstep'])
+                    self.stats.bkwd_err.update(result['lowest'])
+                    self.stats.bkwd_time.update(time.time() - start)
                     return r
 
                 self.hook = new_z1.register_hook(backward_hook)
-                # new_z1.register_hook(backward_hook)
-
+            elif spectral_radius_mode:
+                with torch.enable_grad():
+                    new_z1 = func(z1.requires_grad_())
+                _, sradius = power_method(new_z1, z1, n_iters=150)
+        self.stats.fwd_time.update(time.time() - start)
         return new_z1, jac_loss.view(1, -1), sradius.view(-1, 1)
 
     # def forward(
@@ -187,15 +182,19 @@ class DEQLayer(nn.Module):
 class RecurLayer(nn.Module):
     def __init__(self, block, iters):
         super(RecurLayer, self).__init__()
-        self.recur_block = block
+        self.f = block
+        self.iters=iters
+        self.stats = SolverStats()
 
-    def forward(self, x, iters, proj_out=None):
+    def forward(self, x, iters=None, proj_out=None, **kwargs):
+        if iters is None:
+            iters = self.iters
         # self.rel = []
-        out = x
+        out = torch.zeros_like(x)
         for i in range(iters):
-            out = self.recur_block(out)
+            out = self.f(out, x)
             # self.rel.append((new_out - out).norm().item()/ (1e-8 + new_out.norm().item()))
             # out = new_out
             if proj_out is not None:
                 proj_out(i, out)
-        return out
+        return out, None, None
