@@ -82,7 +82,7 @@ class LitModel(LightningModule):
             deq_mode=deq_mode,
             compute_jac_loss=compute_jac_loss,
             spectral_radius_mode=spectral_radius_mode,
-        )
+        )[0]
 
     def get_z(self, batch_phix, **kwargs):
         return self.model.core(batch_phix, **kwargs)

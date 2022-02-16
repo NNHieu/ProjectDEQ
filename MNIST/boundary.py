@@ -79,6 +79,14 @@ def decision_boundary(mesh, batch, model, solver, solver_args: solvers.SolverArg
     # idx = idx / 10
     # ax.contourf(mesh[0], mesh[1], idx, cmap=cm, alpha=0.8)
 
+def load_data():
+    datamodule = MnistDM(data_dir='data')
+    datamodule.setup() 
+    return datamodule
+
+def load_model(ckpt):
+    model = LitModel.load_from_checkpoint(ckpt)
+    return model
 
 
 def main(ckpt, pixel1, pixel2):

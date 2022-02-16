@@ -23,7 +23,7 @@ seed: 12345
 model:
   arch:
     in_features: 3
-    f_thres: 60
+    f_thres: 20
 
 trainer:
   min_epochs: 1

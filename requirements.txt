@@ -39,3 +39,6 @@ hydra-core==1.1.1
 # --------- lossland --------- #
 h5py
 seaborn
+
+# --------- certification --------- #
+statsmodels

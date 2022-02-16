@@ -11,7 +11,10 @@ import numpy as np
 
 from src.datamodules import GMDataModule
 import deq
+from deq.standard.lib import solvers
 from src.models import LitModel
+from src.utils.animation import AnimatedDynamic
+
 # load environment variables from `.env` file if it exists
 # recursively searches for `.env` in all folders starting from work dir
 dotenv.load_dotenv(override=True)
@@ -145,15 +148,47 @@ def pred_batch(model, solver, X, thres, stop_mode, eps, bs=50, latest=False):
     Z = torch.cat(Z, dim=0).numpy()
     return Z, diff, nstep
 
-def main(ckpt):
+def load_dm():
     datamodule = GMDataModule(dim=2, rho=0.2, data_dir='data')
     datamodule.setup()
     X, target = datamodule.data_train.tensors
+    return X, target
 
+def load_model(ckpt):
     model = LitModel.load_from_checkpoint(ckpt)
-    model.model.core.save_result=True
-    model.to(device)
+    return model
 
+def viz_dynamic(ckpt):
+    X, target = load_dm()
+    model = load_model(ckpt)
+    model = model.to(device)
+
+    anim_dir = f'{os.path.dirname(ckpt)}/dynamics'
+    if not os.path.exists(anim_dir):
+        os.makedirs(anim_dir)
+    
+    # model.model.core.f_thres = 100
+    for solver_name in ['anderson', 'forward']:
+        if solver_name == 'anderson':
+            solver = solvers.AndersonRun
+            solver_args = solvers.AndersonArgs(threshold=100, stop_mode=model.model.core.stop_mode, eps=model.model.core.f_eps, m=6, beta=1.0)
+            post_fix = f'm={solver_args.m}_beta={solver_args.beta}'
+        elif solver_name == 'forward':
+            solver = solvers.ForwardRun
+            solver_args = solvers.SolverArgs(threshold=100, stop_mode=model.model.core.stop_mode, eps=model.model.core.f_eps)
+            post_fix = ''
+        else:
+            raise ValueError
+        
+    anim = AnimatedDynamic(X, target, model, solver, solver_args)
+    anim.ani.save(os.path.join(anim_dir, f'{solver_name}_{post_fix}.gif'), fps=1.0)
+
+
+def main(ckpt):
+    X, target = load_dm()
+    model = load_model(ckpt)
+    model = model.to(device)
+    
 
     row=1
     col=6
