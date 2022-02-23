@@ -33,8 +33,7 @@ rich            # beautiful text formatting in terminal
 termcolor==1.1.0
 easy-to-hard-data==0.1.7
 icecream==2.1.0
-pandas==1.3.5
-hydra-core==1.1.1
+pandas==1.3.0
 
 # --------- lossland --------- #
 h5py

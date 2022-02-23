@@ -215,15 +215,11 @@ class RecurLayer(nn.Module):
         self.iters=iters
         self.stats = SolverStats()
 
-    def forward(self, x, iters=None, proj_out=None, **kwargs):
+    def forward(self, x, iters=None, **kwargs):
         if iters is None:
             iters = self.iters
         # self.rel = []
         out = torch.zeros_like(x)
         for i in range(iters):
             out = self.f(out, x)
-            # self.rel.append((new_out - out).norm().item()/ (1e-8 + new_out.norm().item()))
-            # out = new_out
-            if proj_out is not None:
-                proj_out(i, out)
         return out, None, None

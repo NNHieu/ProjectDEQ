@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 import os
 import torch
@@ -8,6 +8,8 @@ from torch.utils.data import DataLoader, Dataset, TensorDataset
 from torchvision.transforms import transforms
 from torchvision.datasets import MNIST
 
+_MNIST_MEAN = [0.1307,]
+_MNIST_STDDEV = [0.3081,]
 
 class MnistDM(LightningDataModule):
     """
@@ -53,7 +55,6 @@ class MnistDM(LightningDataModule):
         self.transform = transforms.Compose(
             [
                 transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,)),
             ]
         )
 
@@ -110,3 +111,30 @@ class MnistDM(LightningDataModule):
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
         )
+
+class NormalizeLayer(torch.nn.Module):
+    """Standardize the channels of a batch of images by subtracting the dataset mean
+      and dividing by the dataset standard deviation.
+
+      In order to certify radii in original coordinates rather than standardized coordinates, we
+      add the Gaussian noise _before_ standardizing, which is why we have standardization be the first
+      layer of the classifier rather than as a part of preprocessing as is typical.
+      """
+
+    def __init__(self, means: List[float], sds: List[float]):
+        """
+        :param means: the channel means
+        :param sds: the channel standard deviations
+        """
+        super(NormalizeLayer, self).__init__()
+        self.means = torch.nn.Parameter(torch.tensor(means), requires_grad=False)
+        self.sds = torch.nn.Parameter(torch.tensor(sds), requires_grad=False)
+
+    def forward(self, input: torch.tensor):
+        (batch_size, num_channels, height, width) = input.shape
+        means = self.means.repeat((batch_size, height, width, 1)).permute(0, 3, 1, 2)
+        sds = self.sds.repeat((batch_size, height, width, 1)).permute(0, 3, 1, 2)
+        return (input - means) / sds
+
+def get_normalize_layer():
+    return NormalizeLayer(_MNIST_MEAN, _MNIST_STDDEV)

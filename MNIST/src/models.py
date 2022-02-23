@@ -42,11 +42,10 @@ class LitModel(LightningModule):
         lr_schedule: Tuple[int] = [100, 200, 300],
         lr_factor: float = 0.5,
         weight_decay: float = 0.0005,
-        pretrain_steps: int = 100,
-        warmup_period: int = 10,
         compute_jac_loss: bool = False,
         spectral_radius_mode: bool = False,
         init_std: float = 1.0,
+        noise_sd: float = 0.,
     ):
         super().__init__()
 
@@ -55,6 +54,7 @@ class LitModel(LightningModule):
         self.save_hyperparameters(logger=False)
         self.hparams.lr_decay = self.hparams.lr_decay.lower()
         self.model = get_model(self.hparams.arch, init_std=self.hparams.init_std)
+        self.core = self.model.core
         # loss function
         self.criterion = torch.nn.CrossEntropyLoss()
 
@@ -64,8 +64,26 @@ class LitModel(LightningModule):
         self.val_acc = Accuracy()
         self.test_acc = Accuracy()
 
-        self.model.core.save_result = True
+        # self.core.save_result = True
 
+    def _forward(
+        self,
+        x: torch.Tensor,
+        deq_mode: bool = True,
+        compute_jac_loss=False,
+        spectral_radius_mode=False,
+    ):
+        result, jac_loss, sradius = self.model(
+            x,
+            deq_mode=deq_mode,
+            compute_jac_loss=compute_jac_loss,
+            spectral_radius_mode=spectral_radius_mode,
+        )
+        out = [result]
+        if compute_jac_loss: out.append(compute_jac_loss)
+        if spectral_radius_mode: out.append(sradius)
+        return out
+    
     def forward(
         self,
         x: torch.Tensor,
@@ -73,29 +91,28 @@ class LitModel(LightningModule):
         compute_jac_loss=False,
         spectral_radius_mode=False,
     ):
-        return self.model(
-            x,
-            deq_mode=deq_mode,
-            compute_jac_loss=compute_jac_loss,
-            spectral_radius_mode=spectral_radius_mode,
-        )[0]
+        return self._forward(x, deq_mode, compute_jac_loss, spectral_radius_mode)[0]
 
     def step(self, batch: Any, deq_mode: bool = True):
         x, y = batch
-        logits, jac_loss, sradius = self.forward(
+        if self.hparams.noise_sd > 0:
+            x = x + torch.randn_like(x, requires_grad=False).to(x.device) * self.hparams.noise_sd
+        
+        logits = self._forward(
             x,
             deq_mode=deq_mode,
             compute_jac_loss=self.hparams.compute_jac_loss,
             spectral_radius_mode=self.hparams.spectral_radius_mode,
-        )
+        )[0]
+        
         # self.log("train/jac_loss", jac_loss, on_step=False, on_epoch=True, prog_bar=True)
         logits = logits.squeeze()
         loss = self.criterion(logits, y)
         preds = torch.argmax(logits, dim=1)
-        return loss, preds, y, sradius
+        return loss, preds, y
 
     def training_step(self, batch: Any, batch_idx: int):
-        loss, preds, targets, _ = self.step(batch)
+        loss, preds, targets = self.step(batch)
 
         # log train metrics
         acc = self.train_acc(preds, targets)
@@ -110,7 +127,7 @@ class LitModel(LightningModule):
     def on_train_batch_end(
         self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, unused: Optional[int] = 0
     ) -> None:
-        core_stats: SolverStats = self.model.core.stats
+        core_stats: SolverStats = self.core.stats
         self.log(
             "train/f_nstep",
             core_stats.fwd_iters.val,
@@ -142,8 +159,8 @@ class LitModel(LightningModule):
         return super().on_train_batch_end(outputs, batch, batch_idx, unused=unused)
 
     def validation_step(self, batch: Any, batch_idx: int):
-        loss, preds, targets, sradius = self.step(batch)
-        core_stats: SolverStats = self.model.core.stats
+        loss, preds, targets = self.step(batch)
+        core_stats: SolverStats = self.core.stats
         self.log(
             "val/f_nstep",
             core_stats.fwd_iters.val,
@@ -167,8 +184,8 @@ class LitModel(LightningModule):
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def test_step(self, batch: Any, batch_idx: int):
-        loss, preds, targets, sradius = self.step(batch)
-        core_stats: SolverStats = self.model.core.stats
+        loss, preds, targets = self.step(batch)
+        core_stats: SolverStats = self.core.stats
         self.log(
             "test/f_nstep",
             core_stats.fwd_iters.val,
@@ -221,9 +238,9 @@ class LitModel(LightningModule):
         all_params = [{"params": base_params}, {"params": recur_params, "lr": lr / iters}]
 
         if optimizer_name == "sgd":
-            optimizer = torch.optim.SGD(all_params, lr=lr, weight_decay=2e-4, momentum=0.9)
+            optimizer = torch.optim.SGD(all_params, lr=lr, weight_decay=self.hparams.weight_decay, momentum=0.9)
         elif optimizer_name == "adam":
-            optimizer = torch.optim.Adam(all_params, lr=lr, weight_decay=2e-4)
+            optimizer = torch.optim.Adam(all_params, lr=lr, weight_decay=self.hparams.weight_decay)
         elif optimizer_name == "adamw":
             optimizer = torch.optim.AdamW(
                 all_params, lr=lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0.01, amsgrad=False
@@ -270,7 +287,7 @@ def pred(model, solver, X, thres, stop_mode, eps, no_core=False, latest=False):
             nstep = 0
         else:
             state = torch.zeros_like(phi_X)
-            func = lambda z: model.model.core.f(z, phi_X)
+            func = lambda z: model.core.f(z, phi_X)
             result = solver(func, state, threshold=thres, stop_mode=stop_mode, name="forward", eps=eps)
             if latest:
                 nstep = thres

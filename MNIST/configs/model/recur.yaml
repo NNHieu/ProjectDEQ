@@ -3,19 +3,12 @@ _target_: src.models.LitModel
 # name: FixedPointNet
 init_std: 1.
 arch:
+  core: recur
   h_features:
     - 8
     - 16
-  f_solver: anderson
-  f_thres: 30
-  f_eps: 0.001
-  b_solver: anderson
-  b_thres: 30
-  b_eps: 0.001
-  stop_mode: rel
-  num_layers: 5
+  num_layers: 1
   depth: 0
-  core: deq
 # Optim
 lr: 5e-4
 lr_schedule:

@@ -414,7 +414,6 @@ def anderson(f, x0, m=6, lam=1e-4, threshold=50, eps=1e-3, stop_mode="rel", beta
             break
     out = {
         "result": lowest_xest,
-        "latest": X[:, k % m].view_as(x0).clone().detach(),
         "lowest": lowest_dict[stop_mode],
         "nstep": lowest_step_dict[stop_mode],
         "prot_break": False,

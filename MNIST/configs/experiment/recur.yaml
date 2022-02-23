@@ -6,8 +6,8 @@
 defaults:
   - override /mode: exp.yaml
   - override /trainer: default.yaml
-  - override /model: fixedpoint.yaml
-  - override /datamodule: dim3_rho2.yaml
+  - override /model: recur.yaml
+  - override /datamodule: mnist.yaml
   - override /callbacks: null
   - override /logger: null
 
@@ -16,23 +16,21 @@ defaults:
 
 # name of the run determines folder name in logs
 # it's also accessed by loggers
-name: "fp${model.arch.h_features}_${datamodule.dim}_${seed}"
+name: "recur${model.arch.h_features}_${model.arch.num_layers}_${model.noise_sd}_${seed}"
 
 seed: 12345
 
 model:
-  arch:
-    in_features: 3
-    f_thres: 20
+  lr_schedule:
+  - 120
+  - 280
+
+  noise_sd: 0.2
 
 trainer:
   min_epochs: 1
-  max_epochs: 250
-  gradient_clip_val: 0.5
-
-datamodule:
-  train_batch_size: 50
-  test_batch_size: 50
+  max_epochs: 300
+  gradient_clip_val: 10 # Follow from https://openreview.net/pdf?id=y1PXylgrXZ
 
 callbacks:
   model_checkpoint:
