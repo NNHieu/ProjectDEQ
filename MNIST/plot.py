@@ -58,7 +58,7 @@ def decision_boundary(mesh, batch, model, solver, solver_args: solvers.SolverArg
         phi_X = model.model.in_trans(batch)
         state = torch.zeros_like(phi_X)
         func = lambda z: model.model.core.f(z, phi_X)
-        solver_run = solver(func, phi_X, solver_args)
+        solver_run = solver(func, state, solver_args)
         states = solver_run.gen()
         for i, state in enumerate(states):
             logits, score = scores_from_state(state)
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     from glob import glob
     # ckpts=['logs/experiments/fractal_fp2_3_std=0.1_tanh_12345_forward_iteration/multiruns/2022-01-14/02-30-44/1/checkpoints/last.ckpt']
     # ckpts = glob("logs/experiments/fractal_mondeq2_*/**/checkpoints/last.ckpt", recursive=True)
-    ckpts = glob("logs/experiments/fp_*/**/checkpoints/last.ckpt", recursive=True)
+    ckpts = glob("logs/experiments/fp*/**/checkpoints/last.ckpt", recursive=True)
     for ckpt in ckpts:
         pixels = []
         while len(pixels) < 20:

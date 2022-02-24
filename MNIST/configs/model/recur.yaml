@@ -1,7 +1,7 @@
 _target_: src.models.LitModel
 
 # name: FixedPointNet
-init_std: 1.
+init_std: 0.01
 arch:
   core: recur
   h_features:

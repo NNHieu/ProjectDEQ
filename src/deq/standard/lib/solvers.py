@@ -340,6 +340,11 @@ class AndersonRun(SolverRun):
         return self.lowest_xest
 
     def gen(self):
+        self.k = 0
+        yield self.X[:, 0].view_as(self.x0).clone().detach()
+        self.k = 1
+        yield self.X[:, 1].view_as(self.x0).clone().detach()
+        self.k = 2
         while self.k < self.args.threshold:
             self.step()
             self.check()
@@ -542,6 +547,9 @@ class ForwardRun(SolverRun):
         return self.lowest_xest
 
     def gen(self):
+        self.k = 0
+        yield self.x0
+        self.k=1
         while self.k < self.args.threshold:
             self.step()
             self.check()

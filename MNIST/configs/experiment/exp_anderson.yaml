@@ -16,22 +16,34 @@ defaults:
 
 # name of the run determines folder name in logs
 # it's also accessed by loggers
-name: "fp${model.arch.h_features}_${model.arch.f_solver}_${model.noise_sd}_${seed}"
+name: "fp${model.arch.h_features}_${model.arch.f_solver}_${model.noise_sd}_${seed}_v02"
 
 seed: 12345
 
 model:
   arch:
+    h_features:
+    - 16
+    - 32
     f_solver: anderson
-    f_thres: 20
+    f_thres: 30
     b_solver: anderson
-    b_thres: 20
+    b_thres: 30
   
+  lr: 1e-3
   lr_schedule:
-  - 120
-  - 280
+    - 120
+    - 280
+  lr_decay: step
+  lr_factor: 0.2
+  optimizer_name: adam
+  compute_jac_loss: False
+  spectral_radius_mode: False
+  noise_sd: 0.0
 
-  noise_sd: 0.2
+datamodule:
+  train_batch_size: 32
+  test_batch_size: 32
 
 trainer:
   min_epochs: 1

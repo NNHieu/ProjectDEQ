@@ -46,7 +46,7 @@ class MnistDM(LightningDataModule):
         if self.hparams.test_batch_size <= 0:
             self.hparams.test_batch_size = self.hparams.train_batch_size
         # self.dims is returned when you call datamodule.size()
-        self.dims = (1,28,28)
+        # self.dims = (1,28,28)
 
         self.data_train: Optional[MNIST] = None
         self.data_val: Optional[MNIST] = None
@@ -55,6 +55,7 @@ class MnistDM(LightningDataModule):
         self.transform = transforms.Compose(
             [
                 transforms.ToTensor(),
+                # transforms.Normalize(_MNIST_MEAN, _MNIST_STDDEV)
             ]
         )
 

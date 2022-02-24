@@ -212,6 +212,7 @@ class LitModel(LightningModule):
         self.train_acc.reset()
         self.test_acc.reset()
         self.val_acc.reset()
+        self.core.stats.reset()
 
     def configure_optimizers(self):
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
@@ -273,30 +274,3 @@ class LitModel(LightningModule):
             )
             sys.exit()
         return ([optimizer], [lr_scheduler])
-
-
-def pred(model, solver, X, thres, stop_mode, eps, no_core=False, latest=False):
-    model.eval()
-    # target = torch.ones(X.shape[0])
-    with torch.no_grad():
-        X = X.to(device)
-        phi_X = model.model.in_trans(X)
-        if no_core:
-            state = phi_X
-            diff = 0
-            nstep = 0
-        else:
-            state = torch.zeros_like(phi_X)
-            func = lambda z: model.core.f(z, phi_X)
-            result = solver(func, state, threshold=thres, stop_mode=stop_mode, name="forward", eps=eps)
-            if latest:
-                nstep = thres
-                diff = result[f'{stop_mode}_trace'][-1]
-                state = result['latest']
-            else:
-                nstep = result['nstep']
-                diff = result['lowest']
-                state = result['result']
-        logits = model.model.out_trans(state)
-        Z = torch.softmax(logits, dim=1).cpu().numpy()
-    return Z, diff, nstep

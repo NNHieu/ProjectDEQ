@@ -11,7 +11,6 @@ from deq.shared.stats import SolverStats
 
 logger = logging.getLogger(__name__)
 
-
 class DEQLayer(nn.Module):
     def __init__(self, f, conf):
         super(DEQLayer, self).__init__()
@@ -109,6 +108,7 @@ class DEQLayer(nn.Module):
                 _, sradius = power_method(new_z1, z1, n_iters=150)
         self.stats.fwd_time.update(time.time() - start)
         return new_z1, jac_loss.view(1, -1), sradius.view(-1, 1)
+
 
 class DEQLayer2(nn.Module):
     def __init__(self, f, conf):
@@ -222,4 +222,15 @@ class RecurLayer(nn.Module):
         out = torch.zeros_like(x)
         for i in range(iters):
             out = self.f(out, x)
+        return out, None, None
+    
+    def forward_generator(self, x, iters=None, **kwargs):
+        if iters is None:
+            iters = self.iters
+        # self.rel = []
+        out = torch.zeros_like(x)
+        yield out
+        for i in range(iters):
+            out = self.f(out, x)
+            yield out
         return out, None, None

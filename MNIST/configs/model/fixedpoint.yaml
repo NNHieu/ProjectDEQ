@@ -1,7 +1,7 @@
 _target_: src.models.LitModel
 
 # name: FixedPointNet
-init_std: 1.
+init_std: 0.01
 arch:
   h_features:
     - 8
@@ -17,13 +17,3 @@ arch:
   depth: 0
   core: deq
 # Optim
-lr: 5e-4
-lr_schedule:
-  - 120
-  - 280
-lr_decay: step
-lr_factor: 0.2
-optimizer_name: adam
-compute_jac_loss: False
-spectral_radius_mode: False
-noise_sd: 0.0

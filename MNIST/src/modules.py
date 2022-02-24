@@ -12,10 +12,11 @@ from deq.mon import mon, splitting as sp
 from deq.mon.train import expand_args, MON_DEFAULTS
 
 class ResNetLayer(nn.Module):
-    def __init__(self, n_channels, n_inner_channels, kernel_size=3, num_groups=4, init_std=0.01):
+    def __init__(self, n_channels, n_inner_channels, kernel_size=3, num_groups=8, init_std=0.01):
         super().__init__()
         self.conv1 = nn.Conv2d(n_channels, n_inner_channels, kernel_size, padding=kernel_size//2, bias=False)
         self.conv2 = nn.Conv2d(n_inner_channels, n_channels, kernel_size, padding=kernel_size//2, bias=False)
+        # norm_layer = nn.BatchNorm2d
         self.norm1 = nn.GroupNorm(num_groups, n_inner_channels)
         self.norm2 = nn.GroupNorm(num_groups, n_channels)
         self.norm3 = nn.GroupNorm(num_groups, n_channels)
@@ -37,15 +38,17 @@ class Net(nn.Module):
 
     def forward(self, x, **kwargs):
         x_norm = self.normalize_input(x)
-        phi_x = self.in_trans(x)
+        phi_x = self.in_trans(x_norm)
         z, jac_loss, sradius = self.core(phi_x, **kwargs)
         out = self.out_trans(z)
         return out, jac_loss, sradius
 
-def get_model(arch, init_std=1.0):
+def get_model(arch, init_std=0.01):
     in_trans = nn.Sequential(
         nn.Conv2d(1, arch.h_features[0], kernel_size=3, bias=True, padding=1),
-        nn.GroupNorm(4, arch.h_features[0]),
+        # nn.GroupNorm(4, arch.h_features[0]),
+        nn.BatchNorm2d(arch.h_features[0]),
+
     )
     f = ResNetLayer(arch.h_features[0], arch.h_features[1], kernel_size=3, init_std=init_std)
     if arch.get('core', 'deq') == 'deq':
@@ -55,6 +58,7 @@ def get_model(arch, init_std=1.0):
     else:
         raise NotImplemented
     out_trans = nn.Sequential(
+                            nn.BatchNorm2d(arch.h_features[0]),
                             nn.AvgPool2d(7,7),
                             nn.Flatten(),
                             nn.Linear(arch.h_features[0]*4*4,10))

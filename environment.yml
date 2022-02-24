@@ -11,6 +11,7 @@ dependencies:
 - ffmpeg=4.2.2
 - tqdm=4.62.3
 - pandas==1.3.0
+- scikit-learn==1.0.2
 # --------- pytorch --------- #
 
 - conda-forge::pytorch-lightning>=1.5.0
