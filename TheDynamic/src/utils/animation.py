@@ -1,4 +1,3 @@
-from pytest import yield_fixture
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,6 +28,11 @@ def plot_decision_bound(score, mesh, diff, nstep, ax):
     ax.set_yticks(())
     return boundary
 
+def plot_hidden_representation(x, y, z, c, ax):
+    scat = ax.scatter(x, y, z, c=c)
+    # self.ttl = self.ax.text(0.5, 1.05, '', transform = self.ax.transAxes, va='center')
+    # ax_title = ax.set_title('State space')
+    return scat
 
 
 def state_generator(X, model, solver, solver_args):
@@ -108,8 +112,7 @@ class AnimatedDynamic(object):
         zz = (-b - xx*w[0] - yy*w[1]) / w[2]
         self.ax.plot_surface(xx, yy, zz, alpha=0.5)
 
-        self.scat = self.ax.scatter(x, y, z, c=c)
-        # self.ttl = self.ax.text(0.5, 1.05, '', transform = self.ax.transAxes, va='center')
+        self.scat  = plot_hidden_representation(x, y, z, c, self.ax)
         self.ax_title = self.ax.set_title('State space')
         self.ax.axis(self.xy_range)
         self.ax.set_zlim3d(-1.5,1.5)

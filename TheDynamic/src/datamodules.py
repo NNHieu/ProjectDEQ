@@ -2,7 +2,6 @@ from typing import Optional, Tuple
 
 import os
 import torch
-from easy_to_hard_data import PrefixSumDataset
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from torchvision.transforms import transforms

@@ -12,7 +12,7 @@ from pytorch_lightning.utilities.types import (
     STEP_OUTPUT,
     TRAIN_DATALOADERS,
 )
-from torchmetrics import MaxMetric
+# from torchmetrics import MaxMetric
 from torchmetrics.classification.accuracy import Accuracy
 from src.modules import get_model
 
@@ -95,7 +95,7 @@ class LitModel(LightningModule):
 
     def step(self, batch: Any, deq_mode: bool = True):
         x, y = batch
-        logits, jac_loss, sradius = self.forward(
+        logits = self.forward(
             x,
             deq_mode=deq_mode,
             compute_jac_loss=self.hparams.compute_jac_loss,
@@ -105,7 +105,17 @@ class LitModel(LightningModule):
         logits = logits.squeeze()
         loss = self.criterion(logits, y)
         preds = torch.argmax(logits, dim=1)
-        return loss, preds, y, sradius
+        return loss, preds, y, None
+
+    def log_core_stats(self, phase):
+        core_stats: SolverStats = self.model.core.stats
+        self.log(f"{phase}/f_nstep", core_stats.fwd_iters.val, on_epoch=True)
+        self.log(f"{phase}/f_lowest",core_stats.fwd_err.val, on_epoch=True,)
+        self.log(f"{phase}/f_time",core_stats.fwd_time.val, on_epoch=True,)
+        if phase == 'train':
+            self.log(f"{phase}/b_nstep", core_stats.bkwd_iters.val, on_epoch=True)
+            self.log(f"{phase}/b_lowest",core_stats.bkwd_err.val, on_epoch=True,)
+            self.log(f"{phase}/b_time",core_stats.bkwd_time.val, on_epoch=True,)
 
     def manual_training_step(self, batch: Any, batch_idx: int):
         opt: torch.optim.Optimizer = self.optimizers()
@@ -156,97 +166,36 @@ class LitModel(LightningModule):
         loss = self.criterion(logits, y)
         preds = torch.argmax(logits, dim=1)
 
-
         # log train metrics
         acc = self.train_acc(preds, y)
         self.log("train/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
         self.log("train/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
 
-        # we can return here dict with any tensors
-        # and then read it in some callback or in `training_epoch_end()`` below
-        # remember to always return loss from `training_step()` or else backpropagation will fail!
         return {"loss": loss, "preds": preds, "targets": y}
+
 
     def on_train_batch_end(
         self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, unused: Optional[int] = 0
     ) -> None:
-        core_stats: SolverStats = self.model.core.stats
-        self.log(
-            "train/f_nstep",
-            core_stats.fwd_iters.val,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        self.log(
-            "train/f_lowest",
-            core_stats.fwd_err.val,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-        )
-        self.log(
-            "train/b_nstep",
-            core_stats.bkwd_iters.val,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-        )
-        self.log(
-            "train/b_lowest",
-            core_stats.bkwd_err.val,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-        )
+        self.log_core_stats('train')
         return super().on_train_batch_end(outputs, batch, batch_idx, unused=unused)
 
     def validation_step(self, batch: Any, batch_idx: int):
         loss, preds, targets, sradius = self.step(batch)
-        core_stats: SolverStats = self.model.core.stats
-        self.log(
-            "val/f_nstep",
-            core_stats.fwd_iters.val,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        self.log(
-            "val/f_lowest",
-            core_stats.fwd_err.val,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-        )
-        # self.log("val/sradius", sradius, on_step=False, on_epoch=True, prog_bar=True)
-        # log val metrics
         acc = self.val_acc(preds, targets)
         self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=False)
         self.log("val/acc", acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log_core_stats('val')
 
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def test_step(self, batch: Any, batch_idx: int):
         loss, preds, targets, sradius = self.step(batch)
-        core_stats: SolverStats = self.model.core.stats
-        self.log(
-            "test/f_nstep",
-            core_stats.fwd_iters.val,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        self.log(
-            "test/f_lowest",
-            core_stats.fwd_err.val,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-        )
-        # log test metrics
         acc = self.test_acc(preds, targets)
-        self.log("test/loss", loss, on_step=False, on_epoch=True)
-        self.log("test/acc", acc, on_step=False, on_epoch=True)
+
+        self.log_core_stats('test')
+        self.log("test/loss", loss, on_epoch=True)
+        self.log("test/acc", acc, on_epoch=True)
 
         return {"loss": loss, "preds": preds, "targets": targets}
 
@@ -255,6 +204,7 @@ class LitModel(LightningModule):
         self.train_acc.reset()
         self.test_acc.reset()
         self.val_acc.reset()
+        self.model.core.stats.reset()
 
     def configure_optimizers(self):
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
