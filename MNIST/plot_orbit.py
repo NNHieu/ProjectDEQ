@@ -20,21 +20,21 @@ from deq.standard.lib import solvers
 from src.models import LitModel
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-
+ 
 import yaml
 from omegaconf import DictConfig
 
 # just plot the dataset first
 # cm = plt.cm.RdBu
-# cm = pltcm.ScalarMappable(colors.Normalize(vmin=0, vmax=45), cmap=plt.get_cmap('Set1'))
-cm = pltcm.ScalarMappable(colors.Normalize(vmin=0, vmax=9), cmap=plt.cm.RdBu)
+cm = pltcm.ScalarMappable(colors.Normalize(vmin=0, vmax=9), cmap=plt.get_cmap('Set1'))
+# cm = pltcm.ScalarMappable(colors.Normalize(vmin=0, vmax=9), cmap=plt.cm.RdBu)
 
 
 # device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 device = torch.device("cpu")
 
 def load_data():
-    datamodule = MnistDM(data_dir='data', train_batch_size=200)
+    datamodule = MnistDM(data_dir='data', train_batch_size=400)
     datamodule.setup() 
     return datamodule
 
@@ -73,6 +73,9 @@ def load_model(ckpt):
     return model
 
 def collect_state_deq(model, batch_x, batch_y, solver, solver_args):
+    '''
+    return: Tensor - num_step x bs x features
+    '''
     model.eval()
     with torch.no_grad():
     # Collect trajectory
@@ -93,6 +96,7 @@ def collect_state_deq(model, batch_x, batch_y, solver, solver_args):
 
         for state in states:
             orbits.append(state2rep(state))
+    orbits = torch.stack(orbits, dim=0)
     return orbits
 
 def collect_state_recur(model, batch_x, batch_y, iters=None):
@@ -113,24 +117,46 @@ def collect_state_recur(model, batch_x, batch_y, iters=None):
             orbits.append(state2rep(state))
     return orbits
 
+
+def stats_variance(orbits: torch.Tensor):
+    '''
+    input: # num_step x bs x features
+    return: Tensor - num_step
+    '''
+    means = torch.mean(orbits, dim=1)
+    diff = orbits - means[:, None, :] # num_step x bs x features
+    dist = torch.norm(diff, dim=-1) # num_step x bs
+    var = torch.var(dist, dim=-1)
+    return var # num_step
+
+def reduce_dim(orbits: torch.Tensor, n_components: int):
+    '''
+    ----------------
+    PCA
+    input: Tensor - num_step x bs x features
+    return: orbits with shape # num_step x bs x n_components
+    '''
+    len_orbits, batch_sz, nfeatures = orbits.shape
+    # Dim Reduce
+    orbits = orbits.view(-1, nfeatures)
+    pca = PCA(n_components=n_components)
+    trans = pca.fit_transform(StandardScaler().fit_transform(orbits))
+    trans = trans.reshape((len_orbits, batch_sz, -1)) # num_step x bs x features
+    return trans
+
 def plot_orbit(orbits, batch, ax):
     batch_x, batch_y = batch
     batch_sz = batch_x.shape[0]
-
-    len_orbits = len(orbits)
-        
-    # Dim Reduce
-    orbits = torch.cat(orbits, dim=0).cpu().numpy()
-    print(orbits.shape)
-    pca = PCA(n_components=2)
-    trans = pca.fit_transform(StandardScaler().fit_transform(orbits))
-    print(trans.shape)
-    trans = trans.reshape((len_orbits, batch_sz, -1)).transpose((1, 0, 2))
+    trans = trans.transpose((1, 0, 2))
     print(trans.shape)
     
     # Plot
     for sample, c in zip(trans, batch_y):
         ax.plot(sample[:, 0], sample[:, 1], c=cm.to_rgba(c))
+
+def plot_hidden_z(batch_z, c, ax):
+    ax.scatter(batch_z[:, 0], batch_z[:, 1], batch_z[:, 2], c=c)
+
 
 def main(ckpt):
     print('Plotting orbit for checkpoint:', ckpt)
@@ -140,6 +166,7 @@ def main(ckpt):
 
     datamodule = load_data()
     batch_x, batch_y = next(iter(datamodule.train_dataloader()))
+    print(batch_x.shape, batch_y.shape)
     batch_sz = batch_x.shape[0]
 
     model = load_model(ckpt)
@@ -147,21 +174,38 @@ def main(ckpt):
     if 'recur' in ckpt:
         orbits = collect_state_recur(model, batch_x, batch_y)
     else:
-        fig, axes = plt.subplots(1, 2, figsize=(20, 10))
-        
+        plot_steps = [5, 15, 30, 45, 60]
+        nrows, ncols = 2, len(plot_steps)
+        fig = plt.figure(figsize=(7*ncols, 7*nrows))
+        ax_idx = 1
+
         solver = solvers.ForwardRun
         solver_args = solvers.SolverArgs(threshold=60, stop_mode='rel', eps=1e-3)
-        orbits = collect_state_deq(model, batch_x, batch_y,  solver, solver_args, )
-        plot_orbit(orbits, (batch_x, batch_y), axes[0])
-        axes[0].set_title('Forward Run')
+        orbits = collect_state_deq(model, batch_x, batch_y,  solver, solver_args) # num_step x bs x features
+        # step_variences = stats_variance(orbits)
+        print(orbits.shape)
+        orbits = reduce_dim(orbits, 3)
+        print(orbits.shape)
+
+        for step_idx in plot_steps:
+            ax = fig.add_subplot(nrows, ncols, ax_idx, projection='3d')
+            plot_hidden_z(orbits[step_idx - 1], cm.to_rgba(batch_y), ax)
+            ax.set_title(f'FI step={step_idx}')
+            ax_idx += 1
+
+        # plot_orbit(orbits, (batch_x, batch_y), axes[0])
 
         solver = solvers.AndersonRun
         solver_args = solvers.AndersonArgs(threshold=60, stop_mode='rel', eps=1e-3)
         orbits = collect_state_deq(model, batch_x, batch_y,  solver, solver_args, )
-        plot_orbit(orbits, (batch_x, batch_y), axes[1])
-        axes[1].set_title('Anderson Run')
+        orbits = reduce_dim(orbits, 3)
+        for step_idx in plot_steps:
+            ax = fig.add_subplot(nrows, ncols, ax_idx, projection='3d')
+            plot_hidden_z(orbits[step_idx - 1], cm.to_rgba(batch_y), ax)
+            ax.set_title(f'AA step={step_idx}')
+            ax_idx += 1
 
-        fig.savefig(os.path.join(save_dir, 'v02'))
+        fig.savefig(os.path.join(save_dir, 'v02_1'))
         plt.close('all')
 
 def cal_variance(X):
