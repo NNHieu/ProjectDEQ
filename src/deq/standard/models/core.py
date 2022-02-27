@@ -84,9 +84,9 @@ class DEQLayer(nn.Module):
 
                 def backward_hook(grad):
                     start = time.time()
-                    if self.hook is not None:
-                        self.hook.remove()
-                        torch.cuda.synchronize()
+                    # if self.hook is not None:
+                    #     self.hook.remove()
+                    #     torch.cuda.synchronize()
                     result = self.b_solver(
                         lambda y: autograd.grad(new_z1, z1, y, retain_graph=True)[0] + grad,
                         torch.zeros_like(grad),

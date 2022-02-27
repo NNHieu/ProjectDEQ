@@ -18,7 +18,7 @@ dependencies:
 - conda-forge::torchmetrics>=0.6.0
 
 # --------- hydra --------- #
-- conda-forge::hydra
+# - conda-forge::hydra
 # - conda-forge::hydra-core==1.1.0
 # - conda-forge::hydra-colorlog==1.1.0
 # - conda-forge::hydra-optuna-sweeper==1.1.0

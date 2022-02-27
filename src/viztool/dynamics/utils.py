@@ -9,7 +9,7 @@ from deq.standard.lib import solvers
 
 
 
-def plot_boundary(batch, model, solver, solver_args: solvers.SolverArgs, plot_func):
+def collect_state(batch, model, solver, solver_args: solvers.SolverArgs, plot_func):
     # x_min, x_max, y_min, y_max = xy_range
     def scores_from_state(state):
         logits = model.model.out_trans(state)
