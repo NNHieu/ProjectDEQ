@@ -3,6 +3,7 @@
 Create a conda env and install from file `enviroment.yaml` in the root folder of this project.
 
 ## How to run
+`cd` to this folder and run.  
 `python run.py experiment=exp_anderson`
 
 ## Config
